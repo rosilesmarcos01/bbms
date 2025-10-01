@@ -555,6 +555,7 @@ struct AdvancedStatusCard: View {
     private var systemHealthScore: Int {
         guard totalDevices > 0 else { return 100 }
         let onlineDevices = statusCounts[.online] ?? 0
+        
         let warningDevices = statusCounts[.warning] ?? 0
         let criticalDevices = statusCounts[.critical] ?? 0
         let offlineDevices = statusCounts[.offline] ?? 0
@@ -570,7 +571,7 @@ struct AdvancedStatusCard: View {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        Text("System Overview")
+                        Text("Quick Overview")
                             .font(.title3)
                             .fontWeight(.bold)
                             .foregroundColor(Color("BBMSBlack"))
@@ -583,7 +584,7 @@ struct AdvancedStatusCard: View {
                                 .scaleEffect(animateChart ? 1.2 : 0.8)
                                 .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: animateChart)
                             
-                            Text("LIVE")
+                            Text("Online")
                                 .font(.caption2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.green)

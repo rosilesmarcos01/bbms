@@ -26,6 +26,12 @@ struct ContentView: View {
                     Image(systemName: "calendar.badge.clock")
                     Text("Reservations")
                 }
+            
+            AccountView()
+                .tabItem {
+                    Image(systemName: "person.circle")
+                    Text("Account")
+                }
         }
         .accentColor(Color("BBMSGold"))
         .background(
@@ -38,7 +44,6 @@ struct ContentView: View {
                 endPoint: .bottom
             )
         )
-        .preferredColorScheme(.light)
     }
 }
 

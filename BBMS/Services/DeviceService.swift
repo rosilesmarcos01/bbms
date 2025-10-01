@@ -18,9 +18,9 @@ class DeviceService: ObservableObject {
     private func loadSampleData() {
         devices = [
             Device(
-                name: "Main Lobby Temperature",
+                name: "Rubidex®  Temperature Sensor",
                 type: .temperature,
-                location: "Floor 1 - Lobby",
+                location: "Portable Unit",
                 status: .online,
                 value: 22.5,
                 unit: "°C",

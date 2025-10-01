@@ -50,21 +50,46 @@ A **modern, elegant** iOS application built with SwiftUI for monitoring IoT devi
 - **Availability Tracking**: Real-time space availability
 - **Amenity Information**: Detailed facility features
 
+### 👤 User Account Management
+- **Profile Management**: Complete user profile with photo, role, and department
+- **Settings & Preferences**: Customizable app preferences including:
+  - Notification settings (push, email, alerts)
+  - Display preferences (dark mode, temperature units)
+  - Language selection
+  - Quiet hours configuration
+- **Role-Based Access**: Support for different user roles:
+  - Administrator (crown icon, red accent)
+  - Manager (key icon, gold accent)  
+  - Technician (tools icon, blue accent)
+  - User (person icon, green accent)
+- **Account Information**: Service years, department, status tracking
+- **Profile Pictures**: Photo upload and management with default avatars
+
 ## Technical Architecture
 
 ### Project Structure
 ```
 BBMS/
 ├── Models/
+│   ├── Alert.swift           # Alert and notification models
 │   ├── Device.swift          # IoT device data model
+│   ├── User.swift           # User account and preferences model
 │   └── Zone.swift            # Zone and reservation models
 ├── Views/
+│   ├── AccountView.swift     # User account management
+│   ├── AlertsView.swift      # Alert management interface
 │   ├── ContentView.swift     # Main tab navigation
 │   ├── DashboardView.swift   # Dashboard interface
 │   ├── DeviceMonitoringView.swift  # Device management
+│   ├── EditProfileView.swift # Profile editing interface
+│   ├── NotificationSettingsView.swift # Notification preferences
+│   ├── ProfileImagePicker.swift # Profile photo management
+│   ├── SettingsView.swift    # App settings and preferences
 │   └── ZoneReservationView.swift   # Zone booking
 ├── Services/
+│   ├── AlertService.swift    # Alert management service
 │   ├── DeviceService.swift   # Device data management
+│   ├── UserService.swift     # User account management
 │   └── ZoneService.swift     # Zone and reservation logic
 └── Assets.xcassets/          # App icons and resources
 ```

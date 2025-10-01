@@ -156,7 +156,7 @@ struct DeviceRowView: View {
                     .frame(width: 56, height: 56)
                 
                 VStack(spacing: 2) {
-                    Image(systemName: "sensor")
+                    Image(systemName: device.deviceIcon)
                         .foregroundColor(getStatusColor(for: device.status))
                         .font(.title2)
                     
@@ -227,7 +227,7 @@ struct DeviceRowView: View {
         .contentShape(Rectangle())
     }
     
-    // Helper function to get proper SwiftUI colors for device status
+    // Helper function to get proper SwiftUI colors for device status.
     private func getStatusColor(for status: Device.DeviceStatus) -> Color {
         switch status {
         case .online:
@@ -239,35 +239,6 @@ struct DeviceRowView: View {
         case .offline:
             return .gray
         }
-    }
-    
-    // Local function to get device-specific icons
-    private func getDeviceIcon(for device: Device) -> String {
-        let name = device.name.lowercased()
-        
-        // Device-specific icon mapping
-        if name.contains("lobby") {
-            return "building.2.fill"
-        } else if name.contains("tank") {
-            return "cylinder.fill"
-        } else if name.contains("gas") && name.contains("monitor") {
-            return "gauge.badge.plus"
-        } else if name.contains("conference") {
-            return "person.3.fill"
-        } else if name.contains("emergency") {
-            return "exclamationmark.triangle.fill"
-        } else if name.contains("entrance") && name.contains("security") {
-            return "shield.lefthalf.filled"
-        } else if name.contains("outdoor") && name.contains("temperature") {
-            return "thermometer.sun.fill"
-        } else if name.contains("conference") && name.contains("lighting") {
-            return "lightbulb.circle.fill"
-        } else if name.contains("meeting") && name.contains("ac") {
-            return "air.conditioner.horizontal"
-        }
-        
-        // Fall back to type-based icons
-        return device.typeIcon
     }
 }
     
@@ -308,7 +279,7 @@ struct ModernDeviceHeader: View {
                         )
                         .frame(width: 44, height: 44)
                     
-                    Image(systemName: "sensor.tag.radiowaves.forward")
+                    Image(systemName: "network.badge.shield.half.filled")
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
