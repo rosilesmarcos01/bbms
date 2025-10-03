@@ -1,7 +1,7 @@
 import Foundation
 
 struct Device: Identifiable, Codable, Hashable {
-    var id = UUID()
+    var id: UUID
     let name: String
     let type: DeviceType
     let location: String
@@ -9,6 +9,31 @@ struct Device: Identifiable, Codable, Hashable {
     var value: Double
     var unit: String
     let lastUpdated: Date
+    
+    // Custom initializer to generate consistent IDs
+    init(name: String, type: DeviceType, location: String, status: DeviceStatus, value: Double, unit: String, lastUpdated: Date) {
+        self.name = name
+        self.type = type
+        self.location = location
+        self.status = status
+        self.value = value
+        self.unit = unit
+        self.lastUpdated = lastUpdated
+        
+        // Generate a consistent UUID based on name and location
+        let combined = "\(name)_\(location)_\(type.rawValue)"
+        let hash = combined.sha256
+        
+        // Create UUID from hash in a simpler way
+        let part1 = String(hash.prefix(8))
+        let part2 = String(hash.dropFirst(8).prefix(4))
+        let part3 = String(hash.dropFirst(12).prefix(4))
+        let part4 = String(hash.dropFirst(16).prefix(4))
+        let part5 = String(hash.dropFirst(20).prefix(12))
+        
+        let formattedUUID = "\(part1)-\(part2)-\(part3)-\(part4)-\(part5)"
+        self.id = UUID(uuidString: formattedUUID) ?? UUID()
+    }
     
     enum DeviceType: String, CaseIterable, Codable {
         case temperature = "Temperature"
@@ -102,5 +127,16 @@ struct Device: Identifiable, Codable, Hashable {
         
         // Fall back to type-based icon
         return typeIcon
+    }
+}
+
+// Extension to generate consistent UUIDs from strings
+import CryptoKit
+
+extension String {
+    var sha256: String {
+        let data = Data(self.utf8)
+        let hashed = SHA256.hash(data: data)
+        return hashed.compactMap { String(format: "%02x", $0) }.joined()
     }
 }

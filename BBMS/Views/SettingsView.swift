@@ -37,6 +37,19 @@ struct SettingsView: View {
                     .disabled(!userService.currentUser.preferences.notificationsEnabled)
                 }
                 
+                // Developer Tools (for testing notifications)
+                #if DEBUG
+                Section(header: Text("Developer Tools")) {
+                    NavigationLink(destination: NotificationTestView()) {
+                        HStack {
+                            Image(systemName: "bell.badge")
+                                .foregroundColor(.orange)
+                            Text("Test Notifications")
+                        }
+                    }
+                }
+                #endif
+                
                 // Display Settings
                 Section(header: Text("Display")) {
                     Toggle("Dark Mode", isOn: Binding(

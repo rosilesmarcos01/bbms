@@ -23,58 +23,57 @@ struct DeviceMonitoringView: View {
     }
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Modern Header
-                ModernDeviceHeader()
-                
-                // Search Bar
-                SearchBarView(searchText: $searchText)
-                
-                // Filter Options
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+        VStack(spacing: 0) {
+            // Modern Header
+            ModernDeviceHeader()
+            
+            // Search Bar
+            SearchBarView(searchText: $searchText)
+            
+            // Filter Options
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    FilterChip(
+                        title: "All",
+                        isSelected: selectedDeviceType == nil,
+                        action: { selectedDeviceType = nil }
+                    )
+                    
+                    ForEach(Device.DeviceType.allCases, id: \.self) { type in
                         FilterChip(
-                            title: "All",
-                            isSelected: selectedDeviceType == nil,
-                            action: { selectedDeviceType = nil }
+                            title: type.rawValue,
+                            isSelected: selectedDeviceType == type,
+                            action: { selectedDeviceType = type }
                         )
-                        
-                        ForEach(Device.DeviceType.allCases, id: \.self) { type in
-                            FilterChip(
-                                title: type.rawValue,
-                                isSelected: selectedDeviceType == type,
-                                action: { selectedDeviceType = type }
-                            )
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.vertical, 8)
-                .background(Color("BBMSWhite"))
-                
-                // Device List
-                List {
-                    ForEach(filteredDevices) { device in
-                        NavigationLink(destination: DeviceDetailView(device: device)) {
-                            DeviceRowView(device: device)
-                        }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                     }
                 }
-                .listStyle(.plain)
-                .background(Color(.systemGray6).opacity(0.3))
-                .searchable(text: $searchText, prompt: "Search devices...")
+                .padding(.horizontal)
             }
-            .background(.gray.opacity(0.1))
-            .navigationBarHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Refresh") {
-                        // Refresh devices
+            .padding(.vertical, 8)
+            .background(Color("BBMSWhite"))
+            
+            // Device List
+            List {
+                ForEach(filteredDevices) { device in
+                    NavigationLink(destination: DeviceDetailView(device: device)) {
+                        DeviceRowView(device: device)
                     }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                }
+            }
+            .listStyle(.plain)
+            .background(Color(.systemGray6).opacity(0.3))
+            .searchable(text: $searchText, prompt: "Search devices...")
+        }
+        .background(.gray.opacity(0.1))
+        .navigationTitle("Devices")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Refresh") {
+                    // Refresh devices
                 }
             }
         }
@@ -137,6 +136,59 @@ struct FilterChip: View {
 
 struct DeviceRowView: View {
     let device: Device
+    @StateObject private var rubidexService = RubidexService()
+    
+    // Helper function to extract temperature value from data
+    private func extractTemperatureValue(_ data: String) -> (value: String, unit: String) {
+        // Try to parse JSON format first
+        if let jsonData = data.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let temp = json["temp"] as? String {
+            return parseTemperatureString(temp)
+        }
+        
+        // Try to parse direct temperature string
+        return parseTemperatureString(data)
+    }
+    
+    private func parseTemperatureString(_ tempString: String) -> (value: String, unit: String) {
+        // Handle various temperature formats
+        let cleanString = tempString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Pattern for number followed by optional space and temperature unit
+        let patterns = [
+            #"([0-9]+\.?[0-9]*)\s*ºC"#,
+            #"([0-9]+\.?[0-9]*)\s*°C"#,
+            #"([0-9]+\.?[0-9]*)\s*C"#
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: cleanString, range: NSRange(cleanString.startIndex..., in: cleanString)),
+               let range = Range(match.range(at: 1), in: cleanString) {
+                let value = String(cleanString[range])
+                return (value: value, unit: "°C")
+            }
+        }
+        
+        // If no temperature pattern found, return the original data
+        return (value: cleanString, unit: "")
+    }
+    
+    // Computed property for current temperature
+    private var currentTemperature: (value: String, unit: String) {
+        guard device.type == .temperature,
+              let latestDocument = rubidexService.latestDocument else {
+            // For temperature sensors, don't show device.value until we have real data
+            if device.type == .temperature {
+                return (value: "--", unit: "°C")
+            }
+            return (value: String(format: "%.1f", device.value), unit: device.unit)
+        }
+        
+        let extracted = extractTemperatureValue(latestDocument.fields.data)
+        return extracted.unit.isEmpty ? (value: String(format: "%.1f", device.value), unit: device.unit) : extracted
+    }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -201,14 +253,33 @@ struct DeviceRowView: View {
                 }
                 
                 HStack {
-                    Text("\(device.value, specifier: "%.1f") \(device.unit)")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .foregroundColor(Color("BBMSBlack"))
+                    if device.type == .temperature {
+                        if rubidexService.isLoading && rubidexService.latestDocument == nil {
+                            HStack {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
+                                    .scaleEffect(0.7)
+                                Text("Loading...")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.gray)
+                            }
+                        } else {
+                            Text("\(currentTemperature.value) \(currentTemperature.unit)")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .foregroundColor(Color("BBMSBlack"))
+                        }
+                    } else {
+                        Text("\(device.value, specifier: "%.1f") \(device.unit)")
+                            .font(.callout)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color("BBMSBlack"))
+                    }
                     
                     Spacer()
                     
-                    Text("Updated \(timeAgoString(from: device.lastUpdated))")
+                    Text("Updated \(timeAgoString(from: rubidexService.latestDocument?.updateDate ?? device.lastUpdated))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -225,6 +296,12 @@ struct DeviceRowView: View {
                 .stroke(Color(.systemGray6), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+        .onAppear {
+            // Only fetch Rubidex data for temperature sensors
+            if device.type == .temperature {
+                rubidexService.refreshData()
+            }
+        }
     }
     
     // Helper function to get proper SwiftUI colors for device status.

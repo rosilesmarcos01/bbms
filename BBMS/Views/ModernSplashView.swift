@@ -1,5 +1,72 @@
 import SwiftUI
 
+struct CubeWireframeView: View {
+    @State private var rotationAngle: Double = 0
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let size = min(geometry.size.width, geometry.size.height)
+            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            let cubeSize: CGFloat = size * 0.6
+            
+            ZStack {
+                // Front face
+                Path { path in
+                    let frontRect = CGRect(
+                        x: center.x - cubeSize/2,
+                        y: center.y - cubeSize/2,
+                        width: cubeSize,
+                        height: cubeSize
+                    )
+                    path.addRect(frontRect)
+                }
+                .stroke(Color("BBMSGold").opacity(0.8), lineWidth: 2)
+                
+                // Back face (offset for 3D effect)
+                Path { path in
+                    let offset: CGFloat = cubeSize * 0.2
+                    let backRect = CGRect(
+                        x: center.x - cubeSize/2 + offset,
+                        y: center.y - cubeSize/2 - offset,
+                        width: cubeSize,
+                        height: cubeSize
+                    )
+                    path.addRect(backRect)
+                }
+                .stroke(Color("BBMSGold").opacity(0.4), lineWidth: 1.5)
+                
+                // Connecting lines for 3D effect
+                Path { path in
+                    let offset: CGFloat = cubeSize * 0.2
+                    
+                    // Top-left to top-left
+                    path.move(to: CGPoint(x: center.x - cubeSize/2, y: center.y - cubeSize/2))
+                    path.addLine(to: CGPoint(x: center.x - cubeSize/2 + offset, y: center.y - cubeSize/2 - offset))
+                    
+                    // Top-right to top-right
+                    path.move(to: CGPoint(x: center.x + cubeSize/2, y: center.y - cubeSize/2))
+                    path.addLine(to: CGPoint(x: center.x + cubeSize/2 + offset, y: center.y - cubeSize/2 - offset))
+                    
+                    // Bottom-left to bottom-left
+                    path.move(to: CGPoint(x: center.x - cubeSize/2, y: center.y + cubeSize/2))
+                    path.addLine(to: CGPoint(x: center.x - cubeSize/2 + offset, y: center.y + cubeSize/2 - offset))
+                    
+                    // Bottom-right to bottom-right
+                    path.move(to: CGPoint(x: center.x + cubeSize/2, y: center.y + cubeSize/2))
+                    path.addLine(to: CGPoint(x: center.x + cubeSize/2 + offset, y: center.y + cubeSize/2 - offset))
+                }
+                .stroke(Color("BBMSGold").opacity(0.6), lineWidth: 1.5)
+            }
+            .rotationEffect(.degrees(rotationAngle))
+            .onAppear {
+                withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
+                    rotationAngle = 360
+                }
+            }
+        }
+    }
+}
+
 struct ModernSplashView: View {
     @State private var logoScale: CGFloat = 0.5
     @State private var logoOpacity: Double = 0
@@ -27,15 +94,18 @@ struct ModernSplashView: View {
                 
                 // Animated Logo
                 ZStack {
-                    // Outer ring animation
-                    Circle()
-                        .stroke(Color("BBMSGold").opacity(0.3), lineWidth: 2)
+                    // Outer cube animation (blockchain reference)
+                    CubeWireframeView()
                         .frame(width: 140, height: 140)
                         .scaleEffect(logoScale * 1.2)
                         .opacity(logoOpacity * 0.5)
                     
                     // Main logo
-                    ModernLogoView(size: 80, style: .icon)
+                    Image("BMSLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 80, height: 80)
+                        .foregroundColor(.primary)
                         .scaleEffect(logoScale)
                         .opacity(logoOpacity)
                 }
@@ -83,7 +153,7 @@ struct ModernSplashView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(height: 24)
-                        .colorMultiply(.black)
+                        .foregroundColor(.primary)
                         .opacity(textOpacity * 0.7)
                     
 

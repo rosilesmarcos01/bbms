@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - User Model
 struct User: Identifiable, Codable {
-    let id = UUID()
+    var id: UUID
     var name: String
     var email: String
     var role: UserRole
@@ -14,6 +14,7 @@ struct User: Identifiable, Codable {
     var preferences: UserPreferences
     
     init(
+        id: UUID = UUID(),
         name: String,
         email: String,
         role: UserRole = .user,
@@ -23,6 +24,7 @@ struct User: Identifiable, Codable {
         isActive: Bool = true,
         preferences: UserPreferences = UserPreferences()
     ) {
+        self.id = id
         self.name = name
         self.email = email
         self.role = role

@@ -750,7 +750,7 @@ struct SystemOverviewChart: View {
             
             // Animated segments
             ForEach(Array(chartData.enumerated()), id: \.offset) { index, data in
-                let (status, percentage, color) = data
+                let (_, _, color) = data
                 let startAngle = getStartAngle(for: index)
                 let endAngle = getEndAngle(for: index)
                 
