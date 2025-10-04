@@ -106,6 +106,28 @@ class BackgroundMonitoringService: ObservableObject {
             
             // Check if temperature exceeds limits
             if currentTemp > temperatureLimit {
+                // Create alert based on severity
+                let criticalLimit = temperatureLimit + 10.0
+                let severity: Alert.AlertSeverity = currentTemp >= criticalLimit ? .critical : .warning
+                
+                // Create alert object
+                let alert = Alert(
+                    title: severity == .critical ? "CRITICAL Background Alert" : "Background Temperature Alert",
+                    message: "\(device.name) in \(device.location) exceeded temperature limit during background monitoring. Current: \(String(format: "%.1f", currentTemp))°C, Limit: \(String(format: "%.1f", temperatureLimit))°C",
+                    severity: severity,
+                    category: .hvac,
+                    timestamp: Date(),
+                    deviceId: device.id.uuidString,
+                    zoneId: nil,
+                    isRead: false,
+                    isResolved: false
+                )
+                
+                // Add alert to the alert service
+                await MainActor.run {
+                    AlertService.shared.addAlert(alert)
+                }
+                
                 // Trigger notification
                 NotificationService.shared.checkTemperatureThresholds(
                     for: device,
@@ -123,19 +145,81 @@ class BackgroundMonitoringService: ObservableObject {
     // MARK: - Temperature Data Fetching
     
     private func getCurrentTemperature(for device: Device) async -> Double {
-        // In a real application, this would make an API call to get the current temperature
-        // For now, we'll simulate this with some logic
+        // For temperature devices, try to get real data from backend
+        if device.type == .temperature {
+            print("🔍 Background monitor: Getting real temperature data for device: \(device.name)")
+            
+            // Try to get real temperature data from RubidexService (which connects to backend)
+            let rubidexService = RubidexService.shared
+            
+            // Refresh data to get latest readings from backend
+            await MainActor.run {
+                rubidexService.refreshData()
+            }
+            
+            // Give it a moment to fetch the data
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            if let latestDocument = rubidexService.latestDocument {
+                print("🔍 Background monitor: Latest document found")
+                
+                // Extract temperature from the latest document
+                let temperatureValue = extractTemperatureValue(latestDocument.fields.data)
+                
+                if let temp = Double(temperatureValue.value) {
+                    print("📊 Background monitor got real temperature: \(temp)°C for device \(device.name)")
+                    return temp
+                } else {
+                    print("⚠️ Background monitor: Could not convert temperature value to Double")
+                }
+            } else {
+                print("⚠️ Background monitor: No latest document available from backend")
+            }
+            
+            // If no real data is available, return the device's last known value
+            print("⚠️ Background monitor: No real temperature data available for \(device.name), using last known value: \(device.value)°C")
+            return device.value
+        }
         
-        // Simulate network delay
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // For non-temperature devices, return their current value
+        return device.value
+    }
+    
+    // Helper function to extract temperature value from data (same as other services)
+    private func extractTemperatureValue(_ data: String) -> (value: String, unit: String) {
+        // Try to parse JSON format first
+        if let jsonData = data.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let temp = json["temp"] as? String {
+            return parseTemperatureString(temp)
+        }
         
-        // Simulate temperature reading (in a real app, this would be from your API)
-        // For demo purposes, we'll generate a semi-realistic temperature
-        let baseTemp = device.value
-        let variation = Double.random(in: -5...15) // Random variation
-        let currentTemp = baseTemp + variation
+        // Try to parse direct temperature string
+        return parseTemperatureString(data)
+    }
+    
+    private func parseTemperatureString(_ tempString: String) -> (value: String, unit: String) {
+        // Handle various temperature formats
+        let cleanString = tempString.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        return max(0, currentTemp) // Ensure non-negative temperature
+        // Pattern for number followed by optional space and temperature unit
+        let patterns = [
+            #"([0-9]+\.?[0-9]*)\s*ºC"#,
+            #"([0-9]+\.?[0-9]*)\s*°C"#,
+            #"([0-9]+\.?[0-9]*)\s*C"#
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: cleanString, range: NSRange(cleanString.startIndex..., in: cleanString)),
+               let range = Range(match.range(at: 1), in: cleanString) {
+                let value = String(cleanString[range])
+                return (value: value, unit: "°C")
+            }
+        }
+        
+        // If no temperature pattern found, return the original data
+        return (value: cleanString, unit: "")
     }
     
     // MARK: - App Lifecycle Integration

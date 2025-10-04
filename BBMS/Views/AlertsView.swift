@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AlertsView: View {
-    @StateObject private var alertService = AlertService()
+    @ObservedObject private var alertService = AlertService.shared
     @State private var selectedSeverity: Alert.AlertSeverity? = nil
     @State private var selectedCategory: Alert.AlertCategory? = nil
     @State private var showingFilters = false

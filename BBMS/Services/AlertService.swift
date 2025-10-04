@@ -2,17 +2,25 @@ import SwiftUI
 import Foundation
 
 class AlertService: ObservableObject {
+    static let shared = AlertService()
+    
     @Published var alerts: [Alert] = []
     @Published var unreadCount: Int = 0
     
-    init() {
+    private init() {
         loadAlerts()
         updateUnreadCount()
     }
     
     func loadAlerts() {
-        // In a real app, this would fetch from an API or database
-        alerts = Alert.sampleAlerts.sorted { $0.timestamp > $1.timestamp }
+        // Load any persisted alerts from UserDefaults
+        loadPersistedAlerts()
+        
+        // If no persisted alerts, start with sample data
+        if alerts.isEmpty {
+            alerts = Alert.sampleAlerts.sorted { $0.timestamp > $1.timestamp }
+            saveAlertsToUserDefaults()
+        }
     }
     
     func markAsRead(_ alert: Alert) {
@@ -29,6 +37,7 @@ class AlertService: ObservableObject {
                 isResolved: alert.isResolved
             )
             updateUnreadCount()
+            saveAlertsToUserDefaults()
         }
     }
     
@@ -46,6 +55,7 @@ class AlertService: ObservableObject {
                 isResolved: true
             )
             updateUnreadCount()
+            saveAlertsToUserDefaults()
             
             // If this is a temperature alert and has a deviceId, document the resolution in Rubidex
             if alert.category == .hvac && alert.severity == .critical || alert.severity == .warning,
@@ -69,6 +79,7 @@ class AlertService: ObservableObject {
     func deleteAlert(_ alert: Alert) {
         alerts.removeAll { $0.id == alert.id }
         updateUnreadCount()
+        saveAlertsToUserDefaults()
     }
     
     func getAlerts(for severity: Alert.AlertSeverity? = nil, category: Alert.AlertCategory? = nil) -> [Alert] {
@@ -100,6 +111,7 @@ class AlertService: ObservableObject {
     func addAlert(_ alert: Alert) {
         alerts.insert(alert, at: 0)
         updateUnreadCount()
+        saveAlertsToUserDefaults()
     }
     
     func markAllAsRead() {
@@ -119,5 +131,54 @@ class AlertService: ObservableObject {
             }
         }
         updateUnreadCount()
+        saveAlertsToUserDefaults()
+    }
+    
+    // MARK: - Persistence Methods
+    
+    private func saveAlertsToUserDefaults() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(alerts)
+            UserDefaults.standard.set(data, forKey: "SavedAlerts")
+        } catch {
+            print("❌ Failed to save alerts to UserDefaults: \(error)")
+        }
+    }
+    
+    private func loadPersistedAlerts() {
+        guard let data = UserDefaults.standard.data(forKey: "SavedAlerts") else {
+            return
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            alerts = try decoder.decode([Alert].self, from: data)
+            alerts.sort { $0.timestamp > $1.timestamp }
+        } catch {
+            print("❌ Failed to load alerts from UserDefaults: \(error)")
+            alerts = []
+        }
+    }
+    
+    // MARK: - Development/Testing Methods
+    
+    func clearAllAlerts() {
+        alerts.removeAll()
+        updateUnreadCount()
+        saveAlertsToUserDefaults()
+    }
+    
+    func resetToSampleData() {
+        alerts = Alert.sampleAlerts.sorted { $0.timestamp > $1.timestamp }
+        updateUnreadCount()
+        saveAlertsToUserDefaults()
+    }
+    
+    // Method to check if we have real temperature monitoring working
+    func hasRealTemperatureDevices() -> Bool {
+        return alerts.contains { alert in
+            alert.category == .hvac && alert.deviceId != nil && !alert.title.contains("sample")
+        }
     }
 }

@@ -9,10 +9,15 @@ class GlobalTemperatureMonitor: ObservableObject {
     @Published var temperatureLimits: [String: Double] = [:]
     @Published var isMonitoring = false
     
+    // Track last alert time to prevent spam alerts
+    private var lastAlertTimes: [String: Date] = [:]
+    private let alertCooldownPeriod: TimeInterval = 300 // 5 minutes
+    
     private var timer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private let notificationService = NotificationService.shared
     private let backgroundMonitoring = BackgroundMonitoringService.shared
+    private let alertService = AlertService.shared
     private var deviceService: DeviceService?
     private var rubidexService: RubidexService?
     
@@ -119,6 +124,39 @@ class GlobalTemperatureMonitor: ObservableObject {
             let currentTemp = await getCurrentTemperature(for: device)
             
             if currentTemp > limit {
+                // Check if we're in cooldown period for this device
+                let deviceId = device.id.uuidString
+                if let lastAlertTime = lastAlertTimes[deviceId],
+                   Date().timeIntervalSince(lastAlertTime) < alertCooldownPeriod {
+                    print("⏰ Skipping alert for \(device.name) - still in cooldown period")
+                    continue
+                }
+                
+                // Create alert based on severity
+                let criticalLimit = limit + 10.0
+                let severity: Alert.AlertSeverity = currentTemp >= criticalLimit ? .critical : .warning
+                
+                // Create alert object
+                let alert = Alert(
+                    title: severity == .critical ? "CRITICAL Temperature Alert" : "High Temperature Alert",
+                    message: "\(device.name) in \(device.location) has exceeded the temperature limit. Current: \(String(format: "%.1f", currentTemp))°C, Limit: \(String(format: "%.1f", limit))°C",
+                    severity: severity,
+                    category: .hvac,
+                    timestamp: Date(),
+                    deviceId: device.id.uuidString,
+                    zoneId: nil,
+                    isRead: false,
+                    isResolved: false
+                )
+                
+                // Add alert to the alert service
+                await MainActor.run {
+                    alertService.addAlert(alert)
+                }
+                
+                // Update last alert time
+                lastAlertTimes[deviceId] = Date()
+                
                 // Trigger notification
                 notificationService.checkTemperatureThresholds(
                     for: device,
@@ -233,13 +271,21 @@ class GlobalTemperatureMonitor: ObservableObject {
     }
     
     private func getCurrentTemperature(for device: Device) async -> Double {
-        // Only try to get real temperature data for the actual Rubidex device
-        if device.name.contains("Rubidex") && device.type == .temperature {
-            print("🔍 Checking real data for Rubidex device...")
+        // For temperature devices, get real data from backend via RubidexService
+        if device.type == .temperature {
+            print("🔍 Getting real temperature data for device: \(device.name)")
             
-            // Try to get real temperature data from RubidexService
+            // Try to get real temperature data from RubidexService/backend
             if let rubidexService = rubidexService {
-                print("🔍 RubidexService exists")
+                print("🔍 RubidexService exists, checking for latest data...")
+                
+                // Refresh data to get latest readings from backend
+                await MainActor.run {
+                    rubidexService.refreshData()
+                }
+                
+                // Give it a moment to fetch the data
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 
                 if let latestDocument = rubidexService.latestDocument {
                     print("🔍 Latest document found: \(latestDocument.fields.data)")
@@ -255,7 +301,7 @@ class GlobalTemperatureMonitor: ObservableObject {
                         print("⚠️ Could not convert '\(temperatureValue.value)' to Double")
                     }
                 } else {
-                    print("⚠️ No latest document in RubidexService")
+                    print("⚠️ No latest document available from backend")
                     print("🔍 RubidexService documents count: \(rubidexService.documents.count)")
                     print("🔍 RubidexService is loading: \(rubidexService.isLoading)")
                     print("🔍 RubidexService error: \(rubidexService.errorMessage ?? "none")")
@@ -263,20 +309,14 @@ class GlobalTemperatureMonitor: ObservableObject {
             } else {
                 print("⚠️ RubidexService is nil")
             }
+            
+            // If no real data is available, return the device's last known value
+            print("⚠️ No real temperature data available for \(device.name), using last known value: \(device.value)°C")
+            return device.value
         }
         
-        // For non-Rubidex devices or when no real data is available, use simulated data
-        let variation = Double.random(in: -5...15)
-        let currentTemp = device.value + variation
-        let result = max(0, currentTemp)
-        
-        if device.name.contains("Rubidex") {
-            print("⚠️ Global monitor: No real data available for \(device.name), using simulated: \(result)°C")
-        } else {
-            print("📊 Global monitor using simulated temperature: \(result)°C for device \(device.name) (expected)")
-        }
-        
-        return result
+        // For non-temperature devices, return their current value (these might be other sensor types)
+        return device.value
     }
     
     // Helper function to extract temperature value from data (same as DeviceDetailView)

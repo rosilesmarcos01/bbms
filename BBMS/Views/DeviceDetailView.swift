@@ -14,7 +14,7 @@ struct DeviceDetailView: View {
     @State private var showingAPITest = false
     @State private var temperatureLimit: Double = 40.0
     @State private var showingLimitAlert = false
-    @StateObject private var alertService = AlertService()
+    @ObservedObject private var alertService = AlertService.shared
     @EnvironmentObject var notificationService: NotificationService
     @EnvironmentObject var backgroundMonitoring: BackgroundMonitoringService
     @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor

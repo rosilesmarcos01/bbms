@@ -304,5 +304,5 @@ struct AlertInfoRow: View {
 }
 
 #Preview {
-    AlertRowView(alert: Alert.sampleAlerts[0], alertService: AlertService())
+    AlertRowView(alert: Alert.sampleAlerts[0], alertService: AlertService.shared)
 }

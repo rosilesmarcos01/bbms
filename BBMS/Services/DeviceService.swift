@@ -16,94 +16,15 @@ class DeviceService: ObservableObject {
     }
     
     private func loadSampleData() {
+        // Only include the real Rubidex temperature sensor that connects to backend
+        // All other devices will be added manually later through the backend
         devices = [
             Device(
-                name: "Rubidex®  Temperature Sensor",
+                name: "Rubidex® Temperature Sensor",
                 type: .temperature,
                 location: "Portable Unit",
                 status: .online,
-                value: 22.5,
-                unit: "°C",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Water Tank Level",
-                type: .waterLevel,
-                location: "Roof - Tank 1",
-                status: .warning,
-                value: 65.0,
-                unit: "%",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Gas Level Monitor",
-                type: .gasLevel,
-                location: "Basement - Storage",
-                status: .online,
-                value: 85.0,
-                unit: "%",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Conference Room AC",
-                type: .airConditioning,
-                location: "Floor 3 - Room 301",
-                status: .online,
-                value: 20.0,
-                unit: "°C",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Emergency Lighting",
-                type: .lighting,
-                location: "All Floors",
-                status: .critical,
-                value: 0.0,
-                unit: "Status",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Main Entrance Security",
-                type: .security,
-                location: "Floor 1 - Main Door",
-                status: .online,
-                value: 1.0,
-                unit: "Active",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Outdoor Temperature Sensor",
-                type: .temperature,
-                location: "Building Exterior",
-                status: .online,
-                value: 18.5,
-                unit: "°C",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Conference Room Lighting",
-                type: .lighting,
-                location: "Floor 2 - Room 205",
-                status: .online,
-                value: 85.0,
-                unit: "%",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Gas Monitor System",
-                type: .gasLevel,
-                location: "Basement - Utility Room",
-                status: .warning,
-                value: 25.0,
-                unit: "ppm",
-                lastUpdated: Date()
-            ),
-            Device(
-                name: "Meeting Room AC Unit",
-                type: .airConditioning,
-                location: "Floor 4 - Room 401",
-                status: .online,
-                value: 21.0,
+                value: 22.0, // This will be updated with real data from backend
                 unit: "°C",
                 lastUpdated: Date()
             )
@@ -111,32 +32,43 @@ class DeviceService: ObservableObject {
     }
     
     private func startDeviceUpdates() {
-        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-            self.simulateDeviceUpdates()
+        // Update device data from backend every 60 seconds
+        timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { _ in
+            self.updateDevicesFromBackend()
         }
     }
     
-    private func simulateDeviceUpdates() {
-        for i in devices.indices {
-            // Simulate random value changes
-            let variation = Double.random(in: -5.0...5.0)
-            devices[i].value = max(0, devices[i].value + variation)
+    private func updateDevicesFromBackend() {
+        // Update real devices with data from backend via RubidexService
+        let rubidexService = RubidexService.shared
+        
+        Task { @MainActor in
+            // Refresh data from backend
+            rubidexService.refreshData()
             
-            // Randomly change status occasionally
-            if Double.random(in: 0...1) < 0.1 {
-                devices[i].status = Device.DeviceStatus.allCases.randomElement() ?? .online
+            // Update timestamp for all devices to show they're being monitored
+            for i in devices.indices {
+                devices[i] = Device(
+                    name: devices[i].name,
+                    type: devices[i].type,
+                    location: devices[i].location,
+                    status: devices[i].status,
+                    value: devices[i].value, // Value will be updated by temperature monitoring
+                    unit: devices[i].unit,
+                    lastUpdated: Date()
+                )
             }
-            
-            devices[i] = Device(
-                name: devices[i].name,
-                type: devices[i].type,
-                location: devices[i].location,
-                status: devices[i].status,
-                value: devices[i].value,
-                unit: devices[i].unit,
-                lastUpdated: Date()
-            )
         }
+    }
+    
+    // Method to add new devices (for future manual addition)
+    func addDevice(_ device: Device) {
+        devices.append(device)
+    }
+    
+    // Method to remove devices
+    func removeDevice(withId id: UUID) {
+        devices.removeAll { $0.id == id }
     }
     
     func getDevicesByType(_ type: Device.DeviceType) -> [Device] {

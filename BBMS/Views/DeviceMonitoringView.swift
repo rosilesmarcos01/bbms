@@ -5,6 +5,7 @@ struct DeviceMonitoringView: View {
     @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
     @State private var selectedDeviceType: Device.DeviceType? = nil
     @State private var searchText = ""
+    @State private var showingAlerts = false
     
     var filteredDevices: [Device] {
         var devices = deviceService.devices
@@ -26,7 +27,7 @@ struct DeviceMonitoringView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Modern Header
-            ModernDeviceHeader()
+            ModernDeviceHeader(showingAlerts: $showingAlerts)
             
             // Search Bar
             SearchBarView(searchText: $searchText)
@@ -75,12 +76,8 @@ struct DeviceMonitoringView: View {
             // Connect the device service to global monitoring when the devices view appears
             globalMonitor.startGlobalMonitoring(with: deviceService)
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Refresh") {
-                    // Refresh devices
-                }
-            }
+        .sheet(isPresented: $showingAlerts) {
+            AlertsSheetView()
         }
     }
 }
@@ -343,6 +340,8 @@ struct DeviceRowView: View {
 
 
 struct ModernDeviceHeader: View {
+    @Binding var showingAlerts: Bool
+    
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -380,16 +379,16 @@ struct ModernDeviceHeader: View {
                 
                 Spacer()
                 
-                // Filter Button
-                Button(action: {}) {
+                // Alerts Button
+                Button(action: { showingAlerts = true }) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Color(.systemGray6))
                             .frame(width: 40, height: 40)
                         
-                        Image(systemName: "line.3.horizontal.decrease")
+                        Image(systemName: "bell.badge")
                             .font(.title3)
-                            .foregroundColor(Color("BBMSBlack"))
+                            .foregroundColor(Color("BBMSGold"))
                     }
                 }
             }

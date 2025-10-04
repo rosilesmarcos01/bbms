@@ -18,12 +18,6 @@ struct ContentView: View {
                         Text("Devices")
                     }
                 
-                AlertsView()
-                    .tabItem {
-                        Image(systemName: "bell.badge")
-                        Text("Alerts")
-                    }
-                
                 ZoneReservationView()
                     .tabItem {
                         Image(systemName: "calendar.badge.clock")
