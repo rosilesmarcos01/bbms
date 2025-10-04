@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DeviceMonitoringView: View {
     @StateObject private var deviceService = DeviceService()
+    @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
     @State private var selectedDeviceType: Device.DeviceType? = nil
     @State private var searchText = ""
     
@@ -70,6 +71,10 @@ struct DeviceMonitoringView: View {
         .background(.gray.opacity(0.1))
         .navigationTitle("Devices")
         .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            // Connect the device service to global monitoring when the devices view appears
+            globalMonitor.startGlobalMonitoring(with: deviceService)
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Refresh") {
@@ -136,7 +141,7 @@ struct FilterChip: View {
 
 struct DeviceRowView: View {
     let device: Device
-    @StateObject private var rubidexService = RubidexService()
+    @ObservedObject private var rubidexService = RubidexService.shared
     
     // Helper function to extract temperature value from data
     private func extractTemperatureValue(_ data: String) -> (value: String, unit: String) {

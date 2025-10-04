@@ -14,6 +14,7 @@ class GlobalTemperatureMonitor: ObservableObject {
     private let notificationService = NotificationService.shared
     private let backgroundMonitoring = BackgroundMonitoringService.shared
     private var deviceService: DeviceService?
+    private var rubidexService: RubidexService?
     
     // Check interval when app is active (30 seconds)
     private let activeCheckInterval: TimeInterval = 30
@@ -36,6 +37,9 @@ class GlobalTemperatureMonitor: ObservableObject {
         
         // Store reference to device service for dynamic updates
         self.deviceService = deviceService
+        
+        // Use shared RubidexService instance for consistency
+        rubidexService = RubidexService.shared
         
         // Load all temperature devices only if we don't have any monitored devices yet
         if monitoredDevices.isEmpty {
@@ -107,6 +111,9 @@ class GlobalTemperatureMonitor: ObservableObject {
     private func performTemperatureCheck() async {
         guard isMonitoring else { return }
         
+        // Refresh Rubidex data to get latest temperature readings
+        await refreshRubidexData()
+        
         for device in monitoredDevices {
             let limit = getTemperatureLimit(for: device.id.uuidString)
             let currentTemp = await getCurrentTemperature(for: device)
@@ -122,6 +129,24 @@ class GlobalTemperatureMonitor: ObservableObject {
                 print("🚨 Active monitoring: Temperature alert for \(device.name) - \(currentTemp)°C > \(limit)°C")
             }
         }
+    }
+    
+    private func refreshRubidexData() async {
+        guard let rubidexService = rubidexService else { 
+            print("⚠️ No RubidexService available for refresh")
+            return 
+        }
+        
+        print("🔄 Refreshing RubidexService data...")
+        
+        await MainActor.run {
+            rubidexService.refreshData()
+        }
+        
+        // Give it a moment to fetch the data
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds for more time
+        
+        print("✅ RubidexService refresh completed. Documents: \(rubidexService.documents.count), Latest: \(rubidexService.latestDocument != nil)")
     }
     
     // MARK: - Background Monitoring Setup
@@ -208,11 +233,96 @@ class GlobalTemperatureMonitor: ObservableObject {
     }
     
     private func getCurrentTemperature(for device: Device) async -> Double {
-        // In a real app, this would make an API call
-        // For simulation, we'll add some random variation to the base value
+        // Only try to get real temperature data for the actual Rubidex device
+        if device.name.contains("Rubidex") && device.type == .temperature {
+            print("🔍 Checking real data for Rubidex device...")
+            
+            // Try to get real temperature data from RubidexService
+            if let rubidexService = rubidexService {
+                print("🔍 RubidexService exists")
+                
+                if let latestDocument = rubidexService.latestDocument {
+                    print("🔍 Latest document found: \(latestDocument.fields.data)")
+                    
+                    // Extract temperature from the latest document
+                    let temperatureValue = extractTemperatureValue(latestDocument.fields.data)
+                    print("🔍 Extracted temperature value: \(temperatureValue.value) \(temperatureValue.unit)")
+                    
+                    if let temp = Double(temperatureValue.value) {
+                        print("📊 Global monitor got real temperature: \(temp)°C for device \(device.name)")
+                        return temp
+                    } else {
+                        print("⚠️ Could not convert '\(temperatureValue.value)' to Double")
+                    }
+                } else {
+                    print("⚠️ No latest document in RubidexService")
+                    print("🔍 RubidexService documents count: \(rubidexService.documents.count)")
+                    print("🔍 RubidexService is loading: \(rubidexService.isLoading)")
+                    print("🔍 RubidexService error: \(rubidexService.errorMessage ?? "none")")
+                }
+            } else {
+                print("⚠️ RubidexService is nil")
+            }
+        }
+        
+        // For non-Rubidex devices or when no real data is available, use simulated data
         let variation = Double.random(in: -5...15)
         let currentTemp = device.value + variation
-        return max(0, currentTemp)
+        let result = max(0, currentTemp)
+        
+        if device.name.contains("Rubidex") {
+            print("⚠️ Global monitor: No real data available for \(device.name), using simulated: \(result)°C")
+        } else {
+            print("📊 Global monitor using simulated temperature: \(result)°C for device \(device.name) (expected)")
+        }
+        
+        return result
+    }
+    
+    // Helper function to extract temperature value from data (same as DeviceDetailView)
+    private func extractTemperatureValue(_ data: String) -> (value: String, unit: String) {
+        // Try to parse JSON format first
+        if let jsonData = data.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let temp = json["temp"] as? String {
+            return parseTemperatureString(temp)
+        }
+        
+        // Try to parse direct temperature string
+        return parseTemperatureString(data)
+    }
+    
+    private func parseTemperatureString(_ tempString: String) -> (value: String, unit: String) {
+        // Handle various temperature formats
+        let cleanString = tempString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Pattern for number followed by optional space and temperature unit
+        let patterns = [
+            #"^(-?\d+(?:\.\d+)?)\s*°?([CF])$"#,  // 25.5°C, 25.5C, 25.5 C
+            #"^(-?\d+(?:\.\d+)?)\s*$"#           // Just numbers like 25.5
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let range = NSRange(cleanString.startIndex..<cleanString.endIndex, in: cleanString)
+                if let match = regex.firstMatch(in: cleanString, options: [], range: range) {
+                    let valueRange = Range(match.range(at: 1), in: cleanString)!
+                    let value = String(cleanString[valueRange])
+                    
+                    // Get unit if captured
+                    if match.numberOfRanges > 2 && match.range(at: 2).location != NSNotFound {
+                        let unitRange = Range(match.range(at: 2), in: cleanString)!
+                        let unit = String(cleanString[unitRange]).uppercased()
+                        return (value: value, unit: "°\(unit)")
+                    } else {
+                        return (value: value, unit: "°C") // Default to Celsius
+                    }
+                }
+            }
+        }
+        
+        // If no pattern matches, return the original string with default unit
+        return (value: cleanString, unit: "°C")
     }
     
     // MARK: - Data Persistence

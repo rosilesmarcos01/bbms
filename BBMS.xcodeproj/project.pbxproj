@@ -27,6 +27,7 @@
 		A51AA6882E902F0E00F8669E /* BackgroundMonitoringService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA6862E902F0E00F8669E /* BackgroundMonitoringService.swift */; };
 		A51AA6892E902F0E00F8669E /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA6872E902F0E00F8669E /* NotificationService.swift */; };
 		A51AA68B2E90353F00F8669E /* GlobalTemperatureMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */; };
+		A51AA68D2E9066F500F8669E /* TemperatureMonitoringStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */; };
 		A59BFFE32E8B77E70030803A /* ModernSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE22E8B77E70030803A /* ModernSplashView.swift */; };
 		A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE12E8B77E70030803A /* ModernLogoView.swift */; };
 		A59BFFE92E8B86520030803A /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE82E8B86520030803A /* AlertService.swift */; };
@@ -64,6 +65,7 @@
 		A51AA6862E902F0E00F8669E /* BackgroundMonitoringService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundMonitoringService.swift; sourceTree = "<group>"; };
 		A51AA6872E902F0E00F8669E /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalTemperatureMonitor.swift; sourceTree = "<group>"; };
+		A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureMonitoringStatusView.swift; sourceTree = "<group>"; };
 		A59BFFE12E8B77E70030803A /* ModernLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLogoView.swift; sourceTree = "<group>"; };
 		A59BFFE22E8B77E70030803A /* ModernSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernSplashView.swift; sourceTree = "<group>"; };
 		A59BFFE82E8B86520030803A /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
@@ -132,6 +134,7 @@
 		3A001E0C2C9F2EE800000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */,
 				A51AA6842E902EE300F8669E /* NotificationTestView.swift */,
 				A51AA6822E8DC10700F8669E /* APITestView.swift */,
 				A51AA67C2E8DBF5A00F8669E /* RubidexDocumentsView.swift */,
@@ -277,6 +280,7 @@
 				A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */,
 				A51AA6852E902EE300F8669E /* NotificationTestView.swift in Sources */,
 				A51AA68B2E90353F00F8669E /* GlobalTemperatureMonitor.swift in Sources */,
+				A51AA68D2E9066F500F8669E /* TemperatureMonitoringStatusView.swift in Sources */,
 				3A001E1B2C9F2F9D00000001 /* ZoneService.swift in Sources */,
 				3A001E192C9F2F9000000001 /* DeviceService.swift in Sources */,
 				3A001E1F2C9F3F3400000001 /* DeviceDetailView.swift in Sources */,
@@ -428,9 +432,11 @@
 				DEVELOPMENT_ASSET_PATHS = "\"BBMS/Preview Content\"";
 				DEVELOPMENT_TEAM = PCT4ZLGHY7;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BBMS/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "background-app-refresh background-processing";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -457,9 +463,11 @@
 				DEVELOPMENT_ASSET_PATHS = "\"BBMS/Preview Content\"";
 				DEVELOPMENT_TEAM = PCT4ZLGHY7;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BBMS/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "background-app-refresh background-processing";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

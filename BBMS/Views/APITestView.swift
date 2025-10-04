@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct APITestView: View {
-    @StateObject private var rubidexService = RubidexService()
+    @ObservedObject private var rubidexService = RubidexService.shared
     @State private var testResult = ""
     @State private var isTestingAPI = false
     

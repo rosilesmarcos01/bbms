@@ -7,7 +7,7 @@ struct DeviceDetailView: View {
     @State private var selectedTimeRange: TimeRange = .day
     @State private var lastLectureData: [String: Any] = [:]
     @State private var isLoading = false
-    @StateObject private var rubidexService = RubidexService()
+    @ObservedObject private var rubidexService = RubidexService.shared
     @State private var showingAllDocuments = false
     @State private var showingAPITest = false
     @State private var temperatureLimit: Double = 40.0
@@ -880,6 +880,17 @@ struct CurrentStatusView: View {
                     }
                 }
                 
+                // Water Tank Visualization for Water Level devices
+                if device.type == .waterLevel {
+                    WaterTankView(
+                        currentLevel: Double(currentTemperature.value) ?? device.value,
+                        maxLevel: 100.0,
+                        unit: currentTemperature.unit.isEmpty ? device.unit : currentTemperature.unit
+                    )
+                    .frame(height: 120)
+                    .padding(.vertical, 8)
+                }
+                
                 HStack {
                     Text("Last Updated")
                         .font(.subheadline)
@@ -1066,15 +1077,189 @@ struct InfoRow: View {
     }
 }
 
+struct WaterTankView: View {
+    let currentLevel: Double
+    let maxLevel: Double
+    let unit: String
+    
+    private var fillPercentage: Double {
+        min(max(currentLevel / maxLevel, 0.0), 1.0)
+    }
+    
+    private var waterColor: Color {
+        switch fillPercentage {
+        case 0.0..<0.2:
+            return Color("BBMSRed")
+        case 0.2..<0.5:
+            return Color("BBMSGold")
+        case 0.5..<0.8:
+            return Color("BBMSGold")
+        default:
+            return Color("BBMSBlue")
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 20) {
+            // Water Tank Graphic - Simple and Clean Design
+            ZStack {
+                // Main tank body
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color("BBMSBlack"), lineWidth: 2.5)
+                    .frame(width: 80, height: 120)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white)
+                    )
+                
+                // Water fill
+                VStack {
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(
+                            LinearGradient(
+                                colors: [waterColor.opacity(0.8), waterColor],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 76, height: CGFloat(fillPercentage * 116))
+                        .animation(.easeInOut(duration: 0.8), value: fillPercentage)
+                }
+                .frame(width: 80, height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+                // Water surface waves (only if there's water)
+                if fillPercentage > 0.05 {
+                    WaterWaveView(fillPercentage: fillPercentage)
+                }
+                
+                // Level indicator marks on the side
+                VStack(spacing: 22) {
+                    ForEach(0..<5, id: \.self) { index in
+                        HStack {
+                            Rectangle()
+                                .fill(Color("BBMSBlack").opacity(0.3))
+                                .frame(width: 8, height: 1)
+                            Spacer()
+                            Rectangle()
+                                .fill(Color("BBMSBlack").opacity(0.3))
+                                .frame(width: 8, height: 1)
+                        }
+                        .frame(width: 80)
+                    }
+                }
+                .frame(height: 100)
+                
+                // Simple tank top
+                Rectangle()
+                    .fill(Color("BBMSBlack"))
+                    .frame(width: 84, height: 3)
+                    .offset(y: -61.5)
+                
+                // Tank legs/support
+                HStack(spacing: 60) {
+                    Rectangle()
+                        .fill(Color("BBMSBlack"))
+                        .frame(width: 3, height: 10)
+                    Rectangle()
+                        .fill(Color("BBMSBlack"))
+                        .frame(width: 3, height: 10)
+                }
+                .offset(y: 70)
+            }
+            
+            // Level Information
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Level:")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    
+                    Text("\(currentLevel, specifier: "%.1f") \(unit)")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(Color("BBMSBlack"))
+                }
+                
+                HStack {
+                    Text("Percentage:")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    
+                    Text("\(fillPercentage * 100, specifier: "%.1f")%")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(waterColor)
+                }
+                
+                // Status indicator
+                HStack {
+                    Circle()
+                        .fill(waterColor)
+                        .frame(width: 8, height: 8)
+                    
+                    Text(levelStatus)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(waterColor)
+                }
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.gray.opacity(0.05))
+        )
+    }
+    
+    private var levelStatus: String {
+        switch fillPercentage {
+        case 0.0..<0.2:
+            return "Critical Low"
+        case 0.2..<0.5:
+            return "Low"
+        case 0.5..<0.8:
+            return "Normal"
+        default:
+            return "Good"
+        }
+    }
+}
+
+struct WaterWaveView: View {
+    let fillPercentage: Double
+    
+    var body: some View {
+        let waveHeight: CGFloat = 3
+        let waveLength: CGFloat = 15
+        let startY = CGFloat(-60 + (1 - fillPercentage) * 116)
+        
+        Path { path in
+            path.move(to: CGPoint(x: -38, y: startY))
+            
+            for x in stride(from: -38, through: 38, by: 1) {
+                let relativeX = x + 38
+                let sine = sin(CGFloat(relativeX) * .pi / waveLength)
+                let y = startY + sine * waveHeight
+                path.addLine(to: CGPoint(x: CGFloat(x), y: y))
+            }
+        }
+        .stroke(Color.white.opacity(0.6), lineWidth: 1.5)
+    }
+}
+
 #Preview {
     NavigationView {
         DeviceDetailView(device: Device(
-            name: "Temperature Sensor",
-            type: .temperature,
-            location: "Main Lobby",
+            name: "Water Tank Level",
+            type: .waterLevel,
+            location: "Storage Area",
             status: .online,
-            value: 22.5,
-            unit: "°C",
+            value: 75.0,
+            unit: "L",
             lastUpdated: Date()
         ))
     }

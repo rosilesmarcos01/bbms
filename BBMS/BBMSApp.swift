@@ -25,8 +25,8 @@ struct BBMSApp: App {
                 // Initialize notification service and request permissions
                 initializeNotifications()
                 
-                // Start global temperature monitoring
-                initializeGlobalMonitoring()
+                // Note: Global temperature monitoring will be started when DeviceMonitoringView appears
+                // This ensures we have access to the real DeviceService instance
                 
                 // Show splash for 3 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -47,11 +47,6 @@ struct BBMSApp: App {
     private func initializeNotifications() {
         // Request notification permissions when app launches
         notificationService.requestPermission()
-    }
-    
-    private func initializeGlobalMonitoring() {
-        // Start global temperature monitoring
-        globalMonitor.startGlobalMonitoring()
     }
     
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {

@@ -1,6 +1,8 @@
 import Foundation
 
 class RubidexService: ObservableObject {
+    static let shared = RubidexService()
+    
     private let baseURL = "https://app.rubidex.ai/api/v1/chaincode/document/all"
     private let collectionId = "fb9147b198b1f7ccc2c91cb8d9bc29bff48d3e34a908d72c95d387f8b8db8771"
     private let apiKey = "22d9eef8-9d41-4251-bcf0-3f09b4023085"

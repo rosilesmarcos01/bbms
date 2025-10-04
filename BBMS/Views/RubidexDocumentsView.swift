@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RubidexDocumentsView: View {
-    @StateObject private var rubidexService = RubidexService()
+    @ObservedObject private var rubidexService = RubidexService.shared
     @State private var showingAllDocuments = false
     
     var body: some View {

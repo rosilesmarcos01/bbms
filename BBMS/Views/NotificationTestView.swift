@@ -5,126 +5,226 @@ struct NotificationTestView: View {
     @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
     @State private var testTemperature: Double = 45.0
     @State private var testLimit: Double = 40.0
+    @State private var showingStatusDetails = false
+    @State private var statusDetails = "Loading..."
+    @State private var backgroundStatus = "Loading..."
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                Text("Notification Test")
-                    .font(.title)
-                    .fontWeight(.bold)
-                
-                VStack(spacing: 16) {
-                    Text("Permission Status")
-                        .font(.headline)
+            ScrollView {
+                VStack(spacing: 20) {
+                    Text("🔔 Notification Test Center")
+                        .font(.title)
+                        .fontWeight(.bold)
                     
-                    HStack {
-                        Image(systemName: notificationService.permissionGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundColor(notificationService.permissionGranted ? .green : .red)
+                    // Permission Status Card
+                    VStack(spacing: 16) {
+                        Text("📱 Permission Status")
+                            .font(.headline)
                         
-                        Text(notificationService.permissionGranted ? "Granted" : "Not Granted")
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                        
-                        if !notificationService.permissionGranted {
-                            Button("Request Permission") {
-                                notificationService.requestPermission()
+                        HStack {
+                            Image(systemName: notificationService.permissionGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(notificationService.permissionGranted ? .green : .red)
+                            
+                            Text(notificationService.permissionGranted ? "Granted" : "Not Granted")
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            if !notificationService.permissionGranted {
+                                Button("Request Permission") {
+                                    notificationService.requestPermission()
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
                         }
-                    }
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                
-                VStack(spacing: 16) {
-                    Text("Test Temperature Alert")
-                        .font(.headline)
-                    
-                    VStack(spacing: 12) {
+                        
+                        // Background App Refresh Status
                         HStack {
-                            Text("Temperature:")
-                            Spacer()
-                            Text("\(Int(testTemperature))°C")
+                            Image(systemName: backgroundStatus.contains("Available") ? "arrow.clockwise.circle.fill" : "arrow.clockwise.circle")
+                                .foregroundColor(backgroundStatus.contains("Available") ? .green : .red)
+                            
+                            Text("Background Refresh")
                                 .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            Text(backgroundStatus.replacingOccurrences(of: "✅ ", with: "").replacingOccurrences(of: "❌ ", with: "").replacingOccurrences(of: "⚠️ ", with: ""))
+                                .font(.caption)
+                                .foregroundColor(backgroundStatus.contains("Available") ? .green : .red)
                         }
                         
-                        Slider(value: $testTemperature, in: 20...60, step: 1)
-                        
-                        HStack {
-                            Text("Limit:")
-                            Spacer()
-                            Text("\(Int(testLimit))°C")
-                                .fontWeight(.medium)
-                        }
-                        
-                        Slider(value: $testLimit, in: 20...50, step: 1)
-                    }
-                    
-                    Button("Send Test Alert") {
-                        sendTestAlert()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!notificationService.permissionGranted || testTemperature <= testLimit)
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                
-                VStack(spacing: 16) {
-                    Text("Global Monitoring Status")
-                        .font(.headline)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Status:")
-                            Spacer()
-                            Text(globalMonitor.isMonitoring ? "Active" : "Inactive")
-                                .fontWeight(.medium)
-                                .foregroundColor(globalMonitor.isMonitoring ? .green : .red)
-                        }
-                        
-                        HStack {
-                            Text("Monitored Devices:")
-                            Spacer()
-                            Text("\(globalMonitor.monitoredDevices.count)")
-                                .fontWeight(.medium)
-                        }
-                        
-                        if globalMonitor.isMonitoring {
-                            Button("View Full Status") {
-                                print(globalMonitor.getMonitoringStatus())
+                        Button(showingStatusDetails ? "Hide Detailed Status" : "Show Detailed Status") {
+                            showingStatusDetails.toggle()
+                            if showingStatusDetails {
+                                loadStatusDetails()
                             }
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                        
+                        if showingStatusDetails {
+                            Text(statusDetails)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 8)
+                        }
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                
+                    // Test Temperature Alert Card
+                    VStack(spacing: 16) {
+                        Text("🌡️ Test Temperature Alert")
+                            .font(.headline)
+                        
+                        VStack(spacing: 12) {
+                            HStack {
+                                Text("Temperature:")
+                                Spacer()
+                                Text("\(Int(testTemperature))°C")
+                                    .fontWeight(.medium)
+                                    .foregroundColor(testTemperature > testLimit ? .red : .primary)
+                            }
+                            
+                            Slider(value: $testTemperature, in: 20...60, step: 1)
+                            
+                            HStack {
+                                Text("Limit:")
+                                Spacer()
+                                Text("\(Int(testLimit))°C")
+                                    .fontWeight(.medium)
+                            }
+                            
+                            Slider(value: $testLimit, in: 20...50, step: 1)
+                            
+                            HStack {
+                                Text("Status:")
+                                Spacer()
+                                if testTemperature > testLimit {
+                                    Text("🚨 ALERT TRIGGERED")
+                                        .foregroundColor(.red)
+                                        .fontWeight(.bold)
+                                } else {
+                                    Text("✅ Within Limits")
+                                        .foregroundColor(.green)
+                                        .fontWeight(.medium)
+                                }
+                            }
+                        }
+                        
+                        Button("🔔 Send Test Alert") {
+                            sendTestAlert()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!notificationService.permissionGranted || testTemperature <= testLimit)
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                
+                    // Global Monitoring Status Card
+                    VStack(spacing: 16) {
+                        Text("🌡️ Global Monitoring Status")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Status:")
+                                Spacer()
+                                Text(globalMonitor.isMonitoring ? "🟢 Active" : "🔴 Inactive")
+                                    .fontWeight(.medium)
+                                    .foregroundColor(globalMonitor.isMonitoring ? .green : .red)
+                            }
+                            
+                            HStack {
+                                Text("Monitored Devices:")
+                                Spacer()
+                                Text("\(globalMonitor.monitoredDevices.count)")
+                                    .fontWeight(.medium)
+                            }
+                            
+                            if globalMonitor.isMonitoring {
+                                Button("📊 View Full Status") {
+                                    print(globalMonitor.getMonitoringStatus())
+                                }
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                            } else {
+                                Button("▶️ Start Monitoring") {
+                                    globalMonitor.startGlobalMonitoring()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                    
+                    // Critical Alert Test Card
+                    VStack(spacing: 16) {
+                        Text("🚨 Critical Alert Test")
+                            .font(.headline)
+                        
+                        Text("Tests high-priority notifications that bypass Do Not Disturb")
                             .font(.caption)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        
+                        Button("🚨 Send Critical Alert") {
+                            sendCriticalTestAlert()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .disabled(!notificationService.permissionGranted)
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                    
+                    // Quick Actions Card
+                    VStack(spacing: 16) {
+                        Text("⚡ Quick Actions")
+                            .font(.headline)
+                        
+                        HStack(spacing: 12) {
+                            Button("Clear All") {
+                                notificationService.clearDeliveredNotifications()
+                                notificationService.clearAllPendingNotifications()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            
+                            Button("Test Background") {
+                                simulateBackgroundAlert()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!notificationService.permissionGranted)
                         }
                     }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
                 }
                 .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                
-                VStack(spacing: 16) {
-                    Text("Critical Alert Test")
-                        .font(.headline)
-                    
-                    Button("Send Critical Alert") {
-                        sendCriticalTestAlert()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .disabled(!notificationService.permissionGranted)
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                
-                Spacer()
             }
-            .padding()
             .navigationTitle("Notification Test")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                backgroundStatus = notificationService.checkBackgroundAppRefreshStatus()
+            }
+        }
+    }
+    
+    private func loadStatusDetails() {
+        Task {
+            statusDetails = await notificationService.getNotificationStatus()
         }
     }
     
@@ -138,6 +238,8 @@ struct NotificationTestView: View {
             unit: "°C",
             lastUpdated: Date()
         )
+        
+        print("🔔 Sending test alert: \(testTemperature)°C > \(testLimit)°C")
         
         notificationService.sendTemperatureAlert(
             deviceName: testDevice.name,
@@ -159,6 +261,8 @@ struct NotificationTestView: View {
             lastUpdated: Date()
         )
         
+        print("🚨 Sending critical test alert: 55.0°C > 50.0°C")
+        
         notificationService.sendCriticalTemperatureAlert(
             deviceName: testDevice.name,
             deviceId: testDevice.id.uuidString,
@@ -166,6 +270,33 @@ struct NotificationTestView: View {
             criticalLimit: 50.0,
             location: testDevice.location
         )
+    }
+    
+    private func simulateBackgroundAlert() {
+        // Schedule a notification for 5 seconds from now to simulate background
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            let testDevice = Device(
+                name: "Background Test Sensor",
+                type: .temperature,
+                location: "Background Zone",
+                status: .warning,
+                value: 42.0,
+                unit: "°C",
+                lastUpdated: Date()
+            )
+            
+            print("📱 Simulating background alert")
+            
+            notificationService.sendTemperatureAlert(
+                deviceName: testDevice.name,
+                deviceId: testDevice.id.uuidString,
+                currentTemp: 42.0,
+                limit: 40.0,
+                location: testDevice.location
+            )
+        }
+        
+        print("⏰ Background alert scheduled for 5 seconds. Put app in background now!")
     }
 }
 
