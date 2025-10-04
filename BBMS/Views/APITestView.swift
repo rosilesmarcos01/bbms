@@ -4,6 +4,12 @@ struct APITestView: View {
     @ObservedObject private var rubidexService = RubidexService.shared
     @State private var testResult = ""
     @State private var isTestingAPI = false
+    @State private var selectedTest: TestType = .rubidex
+    
+    enum TestType: String, CaseIterable {
+        case rubidex = "Rubidex Direct"
+        case backend = "Backend API"
+    }
     
     var body: some View {
         NavigationView {
@@ -14,12 +20,12 @@ struct APITestView: View {
                         .font(.largeTitle)
                         .foregroundColor(Color("BBMSBlue"))
                     
-                    Text("Rubidex API Test")
+                    Text("API Connection Test")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(Color("BBMSBlack"))
                     
-                    Text("Test the API connection and response")
+                    Text("Test both Rubidex blockchain and backend API")
                         .font(.subheadline)
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
@@ -28,6 +34,15 @@ struct APITestView: View {
                 .background(Color("BBMSWhite"))
                 .cornerRadius(16)
                 .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+                
+                // Test Type Picker
+                Picker("Test Type", selection: $selectedTest) {
+                    ForEach(TestType.allCases, id: \.self) { testType in
+                        Text(testType.rawValue).tag(testType)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal)
                 
                 // Test Button
                 Button(action: {
@@ -104,7 +119,14 @@ struct APITestView: View {
         testResult = ""
         
         Task {
-            let result = await rubidexService.testAPIConnection()
+            let result: String
+            
+            switch selectedTest {
+            case .rubidex:
+                result = await rubidexService.testAPIConnection()
+            case .backend:
+                result = await rubidexService.testBackendConnection()
+            }
             
             await MainActor.run {
                 testResult = result

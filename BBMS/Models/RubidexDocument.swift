@@ -74,9 +74,9 @@ struct RubidexDocument: Identifiable, Codable, Equatable {
 
 struct DocumentFields: Codable, Equatable {
     let coreid: String
-    let data: String  // Changed to String since API returns "test-event"
+    let data: String  // Changed to String since API returns various formats
     let name: String
-    let published_at: String
+    let published_at: String?  // Made optional since some documents don't have this field
     let ttl: Int?  // Made optional since some documents don't have this field
     
     // Equatable conformance
@@ -89,11 +89,20 @@ struct DocumentFields: Codable, Equatable {
     }
     
     var publishedDate: Date {
+        guard let published_at = published_at else {
+            // If no published_at field, use current date as fallback
+            return Date()
+        }
+        
         let formatter = ISO8601DateFormatter()
         return formatter.date(from: published_at) ?? Date()
     }
     
     var formattedPublishedDate: String {
+        guard published_at != nil else {
+            return "Not Available"
+        }
+        
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short

@@ -4,9 +4,11 @@ import Charts
 struct DeviceDetailView: View {
     let device: Device
     @State private var historicalData: [DeviceDataPoint] = []
-    @State private var selectedTimeRange: TimeRange = .day
+    @State private var selectedTimeRange: TimeRange = .hour
     @State private var lastLectureData: [String: Any] = [:]
     @State private var isLoading = false
+    @State private var dataCache: [String: [DeviceDataPoint]] = [:]
+    @State private var lastDataLoadTime: Date = Date.distantPast
     @ObservedObject private var rubidexService = RubidexService.shared
     @State private var showingAllDocuments = false
     @State private var showingAPITest = false
@@ -127,14 +129,30 @@ struct DeviceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .background(.gray.opacity(0.05))
         .onAppear {
-            if historicalData.isEmpty {
-                loadHistoricalData()
-            }
-            rubidexService.refreshData()
+            print("🔄 DeviceDetailView appeared for device: \(device.name)")
             loadTemperatureLimitFromGlobalMonitor()
+            
+            // Clean old cache entries (keep only current device)
+            let currentDevicePrefix = device.id.uuidString
+            dataCache = dataCache.filter { $0.key.hasPrefix(currentDevicePrefix) }
+            
+            // Load historical data
+            loadHistoricalData()
+            
+            // Refresh Rubidex data
+            rubidexService.refreshData()
+        }
+        .onDisappear {
+            // Clean up cache when view disappears
+            if dataCache.count > 4 { // Keep only 4 time ranges cached
+                dataCache.removeAll()
+            }
         }
         .onChange(of: selectedTimeRange) { _, _ in
-            loadHistoricalData()
+            // Use debounced loading for time range changes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.loadHistoricalData()
+            }
         }
         .onChange(of: currentTemperatureValue) { _, newValue in
             checkTemperatureLimit(newValue)
@@ -145,9 +163,16 @@ struct DeviceDetailView: View {
             saveTemperatureLimit(newValue)
             // Update the global monitor with new limit
             globalMonitor.updateDeviceLimit(deviceId: device.id.uuidString, limit: newValue)
-            // Refresh chart when temperature limit changes to update the limit line
-            if device.type == .temperature {
-                loadHistoricalData()
+            // No need to reload data, the chart will update automatically with the new limit value
+        }
+        .onChange(of: rubidexService.documents) { _, newDocuments in
+            // Only reload if we have significantly new data
+            if newDocuments.count != dataCache.values.first?.count {
+                print("🔄 Significant Rubidex data change, clearing cache and reloading")
+                dataCache.removeAll()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.loadHistoricalData()
+                }
             }
         }
         .onChange(of: rubidexService.latestDocument) { _, _ in
@@ -370,7 +395,9 @@ struct DeviceDetailView: View {
             temperatureLimit: temperatureLimit,
             isLoading: isLoading,
             formatAxisLabel: formatAxisLabel,
-            timeAxisStride: timeAxisStride()
+            timeAxisStride: timeAxisStride(),
+            timeAxisCount: timeAxisCount(),
+            onRefresh: loadHistoricalData
         )
     }
     
@@ -657,79 +684,193 @@ struct DeviceDetailView: View {
         return formatter.string(from: date)
     }
     
-    private func timeAxisStride() -> Int {
+    private func timeAxisStride() -> Calendar.Component {
         switch selectedTimeRange {
-        case .hour: return 1
+        case .hour: return .minute
+        case .day: return .hour
+        case .week: return .hour
+        case .month: return .day
+        }
+    }
+    
+    private func timeAxisCount() -> Int {
+        switch selectedTimeRange {
+        case .hour: return 10
         case .day: return 4
-        case .week: return 24
-        case .month: return 168 // 7 days
+        case .week: return 12
+        case .month: return 5
         }
     }
     
     private func loadHistoricalData() {
-        // Prevent multiple concurrent loads
+        // Prevent multiple concurrent loads and rate limiting
         guard !isLoading else { return }
-        isLoading = true
         
-        // Simulated loading historical data
+        // Rate limiting: don't reload more than once every 2 seconds
+        let now = Date()
+        if now.timeIntervalSince(lastDataLoadTime) < 2.0 {
+            print("⏱️ Rate limited: skipping data reload")
+            return
+        }
+        
+        lastDataLoadTime = now
+        
+        // Check cache first
+        let cacheKey = "\(device.id.uuidString)-\(selectedTimeRange.rawValue)"
+        if let cachedData = dataCache[cacheKey], !cachedData.isEmpty {
+            print("💾 Using cached data for \(selectedTimeRange.rawValue)")
+            self.historicalData = cachedData
+            return
+        }
+        
+        isLoading = true
+        print("🔄 Loading historical data for device: \(device.name)")
+        
+        // Use background queue for data processing
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Try to get real data from Rubidex service first
+            if !self.rubidexService.documents.isEmpty {
+                self.loadHistoricalDataFromRubidexAsync()
+            } else {
+                // If no Rubidex data, generate consistent device-based data
+                self.loadHistoricalDataFromDeviceAsync()
+            }
+        }
+    }
+    
+    private func loadHistoricalDataFromRubidexAsync() {
+        print("📊 Processing Rubidex documents (\(rubidexService.documents.count) documents)")
+        
+        var data: [DeviceDataPoint] = []
+        
+        // Convert Rubidex documents to data points
+        for document in rubidexService.documents.sorted(by: { $0.updateDate < $1.updateDate }) {
+            let extracted = extractTemperatureValue(document.fields.data)
+            if let value = Double(extracted.value), value > 0 {
+                data.append(DeviceDataPoint(
+                    id: UUID(),
+                    timestamp: document.updateDate,
+                    value: value
+                ))
+            }
+        }
+        
+        // Filter by time range
+        let filteredData = filterDataByTimeRange(data)
+        
+        DispatchQueue.main.async {
+            // If we don't have enough data points, supplement with device-based data
+            if filteredData.count < 5 {
+                print("⚠️ Insufficient Rubidex data (\(filteredData.count) points), using device data")
+                self.loadHistoricalDataFromDeviceAsync()
+                return
+            }
+            
+            // Cache the result
+            let cacheKey = "\(self.device.id.uuidString)-\(self.selectedTimeRange.rawValue)"
+            self.dataCache[cacheKey] = filteredData
+            
+            self.historicalData = filteredData
+            self.isLoading = false
+            print("✅ Loaded \(filteredData.count) real data points from Rubidex")
+        }
+    }
+    
+    private func loadHistoricalDataFromDeviceAsync() {
+        print("📊 Generating consistent data from device value")
+        
+        // Pre-calculate time parameters
         let calendar = Calendar.current
         let endDate = Date()
         var startDate: Date
         var interval: TimeInterval
+        var numberOfPoints: Int
         
         switch selectedTimeRange {
         case .hour:
             startDate = calendar.date(byAdding: .hour, value: -1, to: endDate) ?? endDate
             interval = 300 // 5 minutes
+            numberOfPoints = 12
         case .day:
             startDate = calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate
             interval = 3600 // 1 hour
+            numberOfPoints = 24
         case .week:
             startDate = calendar.date(byAdding: .day, value: -7, to: endDate) ?? endDate
-            interval = 21600 // 6 hours
+            interval = 14400 // 4 hours
+            numberOfPoints = 42
         case .month:
             startDate = calendar.date(byAdding: .day, value: -30, to: endDate) ?? endDate
             interval = 86400 // 1 day
+            numberOfPoints = 30
         }
         
-        var data: [DeviceDataPoint] = []
-        var currentDate = startDate
-        
-        // Use current temperature value as base for temperature sensors
+        // Pre-calculate base value
         let baseValue: Double
         if device.type == .temperature {
-            baseValue = currentTemperatureValue
+            baseValue = currentTemperatureValue > 0 ? currentTemperatureValue : 22.0
         } else {
-            baseValue = device.value
+            baseValue = device.value > 0 ? device.value : 50.0
         }
         
-        while currentDate <= endDate {
-            // Create realistic temperature variations around the current reading
-            let variation: Double
-            if device.type == .temperature {
-                // More realistic temperature variations (±3°C for temperature sensors)
-                variation = Double.random(in: -3...3)
-            } else {
-                // Generic variation for other sensor types
-                variation = Double.random(in: -5...5)
-            }
+        // Generate data points efficiently
+        var data: [DeviceDataPoint] = []
+        data.reserveCapacity(numberOfPoints) // Pre-allocate capacity
+        
+        let seed = device.id.uuidString.hash
+        var generator = SeededRandomNumberGenerator(seed: seed)
+        
+        for i in 0..<numberOfPoints {
+            let pointDate = startDate.addingTimeInterval(Double(i) * interval)
             
-            let value = max(0, baseValue + variation)
+            // Simplified pattern calculation
+            let timeProgress = Double(i) / Double(numberOfPoints)
+            let dailyPattern = sin(timeProgress * 2 * .pi) * 1.5
+            let randomVariation = Double.random(in: -1.5...1.5, using: &generator)
+            let trendVariation = cos(timeProgress * .pi) * 0.8
+            
+            let value: Double
+            if device.type == .temperature {
+                value = max(10.0, min(50.0, baseValue + dailyPattern + randomVariation + trendVariation))
+            } else {
+                value = max(0, baseValue + randomVariation + trendVariation * 0.5)
+            }
             
             data.append(DeviceDataPoint(
                 id: UUID(),
-                timestamp: currentDate,
+                timestamp: pointDate,
                 value: value
             ))
-            
-            currentDate = currentDate.addingTimeInterval(interval)
         }
         
-        // Use a small delay to simulate network loading, but keep it stable
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.async {
+            // Cache the result
+            let cacheKey = "\(self.device.id.uuidString)-\(self.selectedTimeRange.rawValue)"
+            self.dataCache[cacheKey] = data
+            
             self.historicalData = data
             self.isLoading = false
+            print("✅ Generated \(data.count) consistent data points")
         }
+    }
+    
+    private func filterDataByTimeRange(_ data: [DeviceDataPoint]) -> [DeviceDataPoint] {
+        let calendar = Calendar.current
+        let endDate = Date()
+        var startDate: Date
+        
+        switch selectedTimeRange {
+        case .hour:
+            startDate = calendar.date(byAdding: .hour, value: -1, to: endDate) ?? endDate
+        case .day:
+            startDate = calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate
+        case .week:
+            startDate = calendar.date(byAdding: .day, value: -7, to: endDate) ?? endDate
+        case .month:
+            startDate = calendar.date(byAdding: .day, value: -30, to: endDate) ?? endDate
+        }
+        
+        return data.filter { $0.timestamp >= startDate && $0.timestamp <= endDate }
     }
     
     private func loadRubidexData() {
@@ -760,6 +901,20 @@ struct DeviceDataPoint: Identifiable {
     let id: UUID
     let timestamp: Date
     let value: Double
+}
+
+// Seeded random number generator for consistent data generation
+struct SeededRandomNumberGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    
+    init(seed: Int) {
+        self.state = UInt64(bitPattern: Int64(seed))
+    }
+    
+    mutating func next() -> UInt64 {
+        state = state &* 6364136223846793005 &+ 1
+        return state
+    }
 }
 
 struct RubidexDataRow: View {
@@ -925,7 +1080,42 @@ struct HistoricalDataView: View {
     let temperatureLimit: Double
     let isLoading: Bool
     let formatAxisLabel: (Date) -> String
-    let timeAxisStride: Int
+    let timeAxisStride: Calendar.Component
+    let timeAxisCount: Int
+    let onRefresh: () -> Void
+    
+    // Cached computed properties for better performance
+    private var yAxisBounds: (min: Double, max: Double) {
+        guard !historicalData.isEmpty else { 
+            return (min: 0, max: 100) 
+        }
+        
+        let values = historicalData.map { $0.value }
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 100
+        
+        // Simplified bounds calculation
+        let range = maxValue - minValue
+        let padding = max(range * 0.1, 2.0)
+        let adjustedMin = max(0, minValue - padding)
+        var adjustedMax = maxValue + padding
+        
+        // Temperature sensor optimization
+        if device.type == .temperature {
+            adjustedMax = max(adjustedMax, temperatureLimit + 3)
+            if adjustedMax - adjustedMin < 15 {
+                let center = (adjustedMax + adjustedMin) / 2
+                return (min: max(0, center - 7.5), max: center + 7.5)
+            }
+        }
+        
+        // Cap maximum range
+        if adjustedMax - adjustedMin > 200 {
+            adjustedMax = adjustedMin + 200
+        }
+        
+        return (min: adjustedMin, max: adjustedMax)
+    }
     
     var body: some View {
         VStack(spacing: 16) {
@@ -947,79 +1137,40 @@ struct HistoricalDataView: View {
                 }
                 
                 Spacer()
+                
+                // Refresh button
+                Button(action: {
+                    print("🔄 Manual refresh of historical data")
+                    onRefresh()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                        Text("Refresh")
+                            .font(.caption)
+                    }
+                    .foregroundColor(Color("BBMSBlue"))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color("BBMSBlue").opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .disabled(isLoading)
+                
+                // Data points count indicator
+                if !historicalData.isEmpty {
+                    Text("\(historicalData.count) points")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(4)
+                }
             }
             
-            // Chart
-            if !historicalData.isEmpty {
-                Chart(historicalData) { dataPoint in
-                    LineMark(
-                        x: .value("Time", dataPoint.timestamp),
-                        y: .value("Value", dataPoint.value)
-                    )
-                    .foregroundStyle(Color("BBMSGold"))
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-                    
-                    AreaMark(
-                        x: .value("Time", dataPoint.timestamp),
-                        y: .value("Value", dataPoint.value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color("BBMSGold").opacity(0.3), Color("BBMSGold").opacity(0.1)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    
-                    // Add temperature limit line for temperature sensors
-                    if device.type == .temperature {
-                        RuleMark(y: .value("Limit", temperatureLimit))
-                            .foregroundStyle(.red)
-                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
-                    }
-                }
-                .frame(height: 200)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .hour, count: timeAxisStride)) { value in
-                        AxisGridLine()
-                        AxisTick()
-                        AxisValueLabel {
-                            if let date = value.as(Date.self) {
-                                Text(formatAxisLabel(date))
-                                    .font(.caption)
-                                    .foregroundStyle(Color("BBMSBlack"))
-                            }
-                        }
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisTick()
-                        AxisValueLabel {
-                            if device.type == .temperature {
-                                Text("\(value.as(Double.self) ?? 0, specifier: "%.0f")°C")
-                                    .font(.caption)
-                                    .foregroundStyle(Color("BBMSBlack"))
-                            } else {
-                                Text("\(value.as(Double.self) ?? 0, specifier: "%.0f")")
-                                    .font(.caption)
-                                    .foregroundStyle(Color("BBMSBlack"))
-                            }
-                        }
-                    }
-                }
-                .chartBackground { chartProxy in
-                    Rectangle()
-                        .fill(Color("BBMSWhite"))
-                }
-                .padding()
-                .background(Color("BBMSWhite"))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color("BBMSGold"), lineWidth: 1)
-                )
-            } else {
+            // Chart Section
+            if isLoading {
                 VStack {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
@@ -1030,7 +1181,147 @@ struct HistoricalDataView: View {
                         .foregroundColor(.gray)
                         .padding(.top, 8)
                 }
-                .frame(height: 200)
+                .frame(height: 260) // Fixed height matching chart container
+                .frame(maxWidth: .infinity)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
+            } else if !historicalData.isEmpty {
+                // Fixed container for chart to prevent size changes
+                VStack(spacing: 0) {
+                    Chart(historicalData) { dataPoint in
+                        // Area fill under the line (render first, behind the line)
+                        AreaMark(
+                            x: .value("Time", dataPoint.timestamp),
+                            y: .value("Value", dataPoint.value),
+                            stacking: .unstacked
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color("BBMSGold").opacity(0.3), 
+                                    Color("BBMSGold").opacity(0.1),
+                                    Color("BBMSGold").opacity(0.05)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .clipShape(Rectangle()) // Clip to chart bounds
+                        
+                        // Main data line
+                        LineMark(
+                            x: .value("Time", dataPoint.timestamp),
+                            y: .value("Value", dataPoint.value)
+                        )
+                        .foregroundStyle(Color("BBMSGold"))
+                        .lineStyle(StrokeStyle(lineWidth: 3))
+                        .interpolationMethod(.catmullRom)
+                        
+                        // Data points for better visibility
+                        PointMark(
+                            x: .value("Time", dataPoint.timestamp),
+                            y: .value("Value", dataPoint.value)
+                        )
+                        .foregroundStyle(Color("BBMSGold"))
+                        .symbolSize(25)
+                        
+                        // Add temperature limit line for temperature sensors with animation
+                        if device.type == .temperature {
+                            RuleMark(y: .value("Temperature Limit", temperatureLimit))
+                                .foregroundStyle(.red)
+                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [8, 4]))
+                                .annotation(position: .top, alignment: .trailing) {
+                                    Text("Limit")
+                                        .font(.caption2)
+                                        .foregroundColor(.red)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(.red.opacity(0.1))
+                                        .cornerRadius(3)
+                                }
+                        }
+                    }
+                    .frame(height: 220) // Fixed height
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: timeAxisStride, count: timeAxisCount)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                                .foregroundStyle(Color.gray.opacity(0.3))
+                            
+                            AxisTick(stroke: StrokeStyle(lineWidth: 1))
+                                .foregroundStyle(Color("BBMSBlack").opacity(0.6))
+                            
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(formatAxisLabel(date))
+                                        .font(.caption)
+                                        .foregroundStyle(Color("BBMSBlack"))
+                                }
+                            }
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                                .foregroundStyle(Color.gray.opacity(0.3))
+                            
+                            AxisTick(stroke: StrokeStyle(lineWidth: 1))
+                                .foregroundStyle(Color("BBMSBlack").opacity(0.6))
+                            
+                            AxisValueLabel {
+                                if let doubleValue = value.as(Double.self) {
+                                    if device.type == .temperature {
+                                        Text("\(Int(doubleValue))°C")
+                                            .font(.caption)
+                                            .foregroundStyle(Color("BBMSBlack"))
+                                    } else {
+                                        Text("\(Int(doubleValue))")
+                                            .font(.caption)
+                                            .foregroundStyle(Color("BBMSBlack"))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .chartYScale(domain: yAxisBounds.min...yAxisBounds.max)
+                    .chartBackground { chartProxy in
+                        Rectangle()
+                            .fill(Color("BBMSWhite"))
+                    }
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(Color("BBMSWhite"))
+                            .border(Color("BBMSGold").opacity(0.3), width: 1)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .clipped() // Ensure entire chart is clipped to its frame
+                    .animation(.easeOut(duration: 0.3), value: temperatureLimit) // Faster animation
+                    .id("chart-\(selectedTimeRange.rawValue)") // Simplified ID
+                    .padding()
+                }
+                .frame(height: 260) // Fixed container height including padding
+                .background(Color("BBMSWhite"))
+                .clipShape(RoundedRectangle(cornerRadius: 12)) // Clip the entire container
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color("BBMSGold"), lineWidth: 1)
+                )
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray)
+                    
+                    Text("No Data Available")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                    
+                    Text("Historical data will appear here once readings are collected")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(height: 260) // Fixed height matching chart container
                 .frame(maxWidth: .infinity)
                 .background(Color.gray.opacity(0.05))
                 .cornerRadius(12)
@@ -1039,7 +1330,10 @@ struct HistoricalDataView: View {
             // Time Range Buttons
             HStack(spacing: 12) {
                 ForEach(DeviceDetailView.TimeRange.allCases, id: \.self) { range in
-                    Button(action: { selectedTimeRange = range }) {
+                    Button(action: { 
+                        selectedTimeRange = range 
+                        print("📊 Selected time range: \(range.rawValue)")
+                    }) {
                         Text(range.rawValue)
                             .font(.subheadline)
                             .fontWeight(.medium)
@@ -1051,11 +1345,64 @@ struct HistoricalDataView: View {
                     }
                 }
             }
+            
+            // Chart Statistics
+            if !historicalData.isEmpty {
+                HStack(spacing: 20) {
+                    StatisticView(
+                        title: "Average",
+                        value: String(format: "%.1f", historicalData.map { $0.value }.reduce(0, +) / Double(historicalData.count)),
+                        unit: device.type == .temperature ? "°C" : device.unit
+                    )
+                    
+                    StatisticView(
+                        title: "Minimum",
+                        value: String(format: "%.1f", historicalData.map { $0.value }.min() ?? 0),
+                        unit: device.type == .temperature ? "°C" : device.unit
+                    )
+                    
+                    StatisticView(
+                        title: "Maximum",
+                        value: String(format: "%.1f", historicalData.map { $0.value }.max() ?? 0),
+                        unit: device.type == .temperature ? "°C" : device.unit
+                    )
+                }
+                .padding(.top, 8)
+            }
         }
         .padding()
         .background(Color("BBMSWhite"))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+    }
+}
+
+struct StatisticView: View {
+    let title: String
+    let value: String
+    let unit: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.gray)
+            
+            HStack(spacing: 2) {
+                Text(value)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color("BBMSBlack"))
+                
+                Text(unit)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(6)
     }
 }
 

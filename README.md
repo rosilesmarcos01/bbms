@@ -1,6 +1,28 @@
-# Building Management System (BBMS) - iOS App
+# Building Management System (BBMS)
 
-A **modern, elegant** iOS application built with SwiftUI for monitoring IoT devices and managing building facilities with a beautiful, intuitive interface.
+A **modern, elegant** full-stack IoT solution with iOS application and backend API for monitoring IoT devices and managing building facilities. Features blockchain integration with Rubidex for immutable data storage.
+
+## 🏗️ Architecture
+
+```
+iOS App (SwiftUI) ↔ Backend API (Node.js) ↔ Rubidex Blockchain
+                                    ↓
+                         Push Notifications & Real-time Updates
+```
+
+## 📁 Repository Structure
+
+```
+bbms/
+├── BBMS/                     # iOS SwiftUI Application
+├── BBMS.xcodeproj/          # Xcode Project
+├── backend/                 # Node.js Backend API
+│   ├── src/                 # Backend source code
+│   ├── package.json         # Node.js dependencies
+│   └── README.md           # Backend documentation
+├── docs/                    # Documentation
+└── README.md               # This file
+```
 
 ## 🎨 Modern Design Features
 
@@ -125,11 +147,65 @@ BBMS/
 - **Bundle Identifier**: `com.bbms.app`
 - **Team**: Configure with your Apple Developer account
 - **Deployment Target**: iOS 17.0
+## 🚀 Quick Start
+
+### iOS App
+1. Open `BBMS.xcodeproj` in Xcode
+2. Select your target device or simulator
+3. Build and run the project (⌘+R)
+
+### Backend API
+```bash
+cd backend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+The backend runs on `http://localhost:3000` and connects to Rubidex blockchain.
+
+## 🔧 Development Setup
+
+### iOS Requirements
+- Xcode 15.0 or later
+- iOS 17.0+ deployment target
+- Swift 5.0+
+
+### Backend Requirements
+- Node.js 18+ 
+- npm or yarn
+- Rubidex API access
+
+## 📱 Testing on Phone
+
+### Option 1: Local Development
+```bash
+# 1. Start backend
+cd backend && npm run dev
+
+# 2. Get your Mac's IP address
+ifconfig | grep "inet " | grep -v 127.0.0.1
+
+# 3. Update iOS app to point to your Mac's IP
+# In RubidexService.swift: 
+# private let backendURL = "http://192.168.1.XXX:3000/api"
+```
+
+### Option 2: Cloud Deployment
+```bash
+# Deploy backend to Heroku/Railway/Render
+# Update iOS app with production URL
+```
 
 ## Features in Detail
 
 ### Real-time Monitoring
-The app simulates IoT device connections with automatic data updates every 30 seconds. Device status changes are reflected immediately in the UI with appropriate color coding and alerts.
+The app connects to Rubidex blockchain for immutable IoT data storage with automatic updates. Device status changes are reflected immediately in the UI with appropriate color coding and alerts.
+
+### Blockchain Integration
+- **Rubidex Blockchain**: Immutable temperature readings and device data
+- **Real-time Sync**: Live updates between iOS app and blockchain
+- **Audit Trail**: Complete history of all sensor readings and alerts
 
 ### Reservation Management
 Users can book zones with:
@@ -137,11 +213,6 @@ Users can book zones with:
 - Purpose specification
 - Conflict detection
 - Status tracking (Confirmed, Pending, Cancelled)
-
-### Modern UI Design
-- Clean, intuitive interface
-- System-native icons and controls
-- Responsive layout for all iOS devices
 - Accessibility-compliant design
 
 ## Sample Data

@@ -187,7 +187,7 @@ struct UltraModernHeader: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text("Smart Building")
+                        Text("Rubidex Office")
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundStyle(
@@ -212,7 +212,7 @@ struct UltraModernHeader: View {
                                     value: Date().timeIntervalSince1970
                                 )
                             
-                            Text("LIVE")
+                            Text("Online")
                                 .font(.caption2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.green)
