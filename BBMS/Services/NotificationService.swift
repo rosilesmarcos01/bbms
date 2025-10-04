@@ -135,6 +135,25 @@ class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterD
             return
         }
         
+        // Automatically write alert document to Rubidex
+        Task {
+            let severity = determineSeverity(currentTemp: currentTemp, limit: limit)
+            let success = await RubidexService.shared.writeTemperatureAlertDocument(
+                deviceId: deviceId,
+                deviceName: deviceName,
+                currentTemp: currentTemp,
+                limit: limit,
+                location: location,
+                severity: severity
+            )
+            
+            if success {
+                print("✅ Temperature alert automatically documented in Rubidex blockchain")
+            } else {
+                print("⚠️ Failed to document temperature alert in Rubidex blockchain")
+            }
+        }
+        
         // Double-check permission status
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized else {
@@ -190,6 +209,24 @@ class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterD
     // MARK: - Critical Temperature Alert (Higher Priority)
     
     func sendCriticalTemperatureAlert(deviceName: String, deviceId: String, currentTemp: Double, criticalLimit: Double, location: String) {
+        // Automatically write critical alert document to Rubidex
+        Task {
+            let success = await RubidexService.shared.writeTemperatureAlertDocument(
+                deviceId: deviceId,
+                deviceName: deviceName,
+                currentTemp: currentTemp,
+                limit: criticalLimit,
+                location: location,
+                severity: "critical" // Critical temperature alert
+            )
+            
+            if success {
+                print("✅ Critical temperature alert automatically documented in Rubidex blockchain")
+            } else {
+                print("⚠️ Failed to document critical temperature alert in Rubidex blockchain")
+            }
+        }
+        
         // Double-check permission status
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized else {
@@ -263,6 +300,22 @@ class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterD
                 limit: temperatureLimit,
                 location: device.location
             )
+        }
+    }
+    
+    // MARK: - Temperature Alert Severity Mapping
+    
+    private func determineSeverity(currentTemp: Double, limit: Double) -> String {
+        let difference = currentTemp - limit
+        
+        if difference >= 10.0 {
+            return "critical"
+        } else if difference >= 5.0 {
+            return "high"
+        } else if difference >= 2.0 {
+            return "moderate"
+        } else {
+            return "low"
         }
     }
     

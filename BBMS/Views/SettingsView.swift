@@ -187,7 +187,6 @@ struct SettingsView: View {
                         dismiss()
                     }
                     .foregroundColor(Color("BBMSGold"))
-                    .fontWeight(.semibold)
                 }
             }
         }

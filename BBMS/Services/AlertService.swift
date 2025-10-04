@@ -46,6 +46,23 @@ class AlertService: ObservableObject {
                 isResolved: true
             )
             updateUnreadCount()
+            
+            // If this is a temperature alert and has a deviceId, document the resolution in Rubidex
+            if alert.category == .hvac && alert.severity == .critical || alert.severity == .warning,
+               let deviceId = alert.deviceId {
+                Task {
+                    let success = await RubidexService.shared.updateTemperatureAlertResolved(
+                        deviceId: deviceId,
+                        deviceName: alert.title.replacingOccurrences(of: "High Temperature Alert", with: "Device").replacingOccurrences(of: "CRITICAL Temperature Alert", with: "Device")
+                    )
+                    
+                    if success {
+                        print("✅ Temperature alert resolution automatically documented in Rubidex blockchain")
+                    } else {
+                        print("⚠️ Failed to document temperature alert resolution in Rubidex blockchain")
+                    }
+                }
+            }
         }
     }
     

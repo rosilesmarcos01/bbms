@@ -3,14 +3,9 @@ import Foundation
 class RubidexService: ObservableObject {
     static let shared = RubidexService()
     
-    // Direct Rubidex connection (for reading)
-    private let baseURL = "https://app.rubidex.ai/api/v1/chaincode/document/all"
-    private let collectionId = "fb9147b198b1f7ccc2c91cb8d9bc29bff48d3e34a908d72c95d387f8b8db8771"
-    private let apiKey = "22d9eef8-9d41-4251-bcf0-3f09b4023085"
-    
-    // Backend API connection (for writing and real-time updates)
-    // TODO: Replace with your Railway deployment URL
-    private let backendURL = "http://localhost:3000/api" // Change this after Railway deployment
+    // Backend API connection (unified endpoint for all data)
+    // Local testing - your Mac's IP address
+    private let backendURL = "http://192.168.100.4:3000/api"
     
     @Published var documents: [RubidexDocument] = []
     @Published var latestDocument: RubidexDocument?
@@ -23,8 +18,8 @@ class RubidexService: ObservableObject {
             errorMessage = nil
         }
         
-        // Use GET method with query parameter as confirmed by testing
-        let urlString = "https://app.rubidex.ai/api/v1/chaincode/document/all?collection-id=\(collectionId)"
+        // Use backend endpoint instead of direct Rubidex call
+        let urlString = "\(backendURL)/documents/all"
         
         guard let url = URL(string: urlString) else {
             await MainActor.run {
@@ -34,11 +29,11 @@ class RubidexService: ObservableObject {
             return
         }
         
-        print("Making GET request to: \(urlString)")
+        print("Making GET request to backend: \(urlString)")
         
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"  // Changed to GET
-        request.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         // Add timeout
         request.timeoutInterval = 30.0
@@ -58,7 +53,7 @@ class RubidexService: ObservableObject {
             
             if httpResponse.statusCode == 404 {
                 await MainActor.run {
-                    errorMessage = "API endpoint not found (404). Please verify the URL and collection ID."
+                    errorMessage = "Backend endpoint not found (404). Please check if the server is running."
                     isLoading = false
                 }
                 return
@@ -71,7 +66,7 @@ class RubidexService: ObservableObject {
                 }
                 
                 await MainActor.run {
-                    errorMessage = "HTTP Error: \(httpResponse.statusCode)"
+                    errorMessage = "Backend Error: \(httpResponse.statusCode)"
                     isLoading = false
                 }
                 return
@@ -82,13 +77,13 @@ class RubidexService: ObservableObject {
             
             // Log the raw response for debugging
             if let jsonString = String(data: data, encoding: .utf8) {
-                print("Raw API Response: \(jsonString.prefix(1000))")
+                print("Raw Backend Response: \(jsonString.prefix(1000))")
             }
             
             // Decode as RubidexAPIResponse which contains result array
             do {
                 let apiResponse = try decoder.decode(RubidexAPIResponse.self, from: data)
-                print("✅ Successfully decoded API response with \(apiResponse.result.count) documents")
+                print("✅ Successfully decoded backend response with \(apiResponse.result.count) documents")
                 print("📄 Latest document ID: \(apiResponse.latestDocument?.id ?? "None")")
                 print("🔄 Updating UI with new data...")
                 
@@ -137,17 +132,17 @@ class RubidexService: ObservableObject {
         }
     }
     
-        // Test function to debug API connectivity
+        // Test function to debug backend connectivity
     func testAPIConnection() async -> String {
-        let urlString = "https://app.rubidex.ai/api/v1/chaincode/document/all?collection-id=\(collectionId)"
+        let urlString = "\(backendURL)/documents/test"
         
         guard let url = URL(string: urlString) else {
             return "❌ Invalid URL: \(urlString)"
         }
         
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"  // Changed to GET
-        request.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 15.0
         
         do {
@@ -161,10 +156,9 @@ class RubidexService: ObservableObject {
             let statusIcon = httpResponse.statusCode == 200 ? "✅" : "❌"
             
             return """
-            \(statusIcon) API Test Results:
+            \(statusIcon) Backend Test Results:
             
             📡 URL: \(urlString)
-            🔐 Auth Header: Key \(String(apiKey.prefix(8)))...
             📊 Status Code: \(httpResponse.statusCode)
             📝 Response Body: \(responseBody.prefix(1000))...
             
@@ -299,6 +293,168 @@ class RubidexService: ObservableObject {
             }
         } catch {
             print("❌ Error writing temperature reading: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    // Get current temperature readings from backend
+    func getCurrentTemperatures() async -> [BackendDevice] {
+        guard let url = URL(string: "\(backendURL)/temperature/current") else {
+            print("❌ Invalid backend URL for current temperatures")
+            return []
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("❌ Failed to get current temperatures")
+                return []
+            }
+            
+            let temperatures = try JSONDecoder().decode([BackendDevice].self, from: data)
+            print("✅ Retrieved \(temperatures.count) current temperature readings from backend")
+            return temperatures
+            
+        } catch {
+            print("❌ Error getting current temperatures: \(error.localizedDescription)")
+            return []
+        }
+    }
+    
+    // MARK: - Temperature Alert Documentation
+    
+    // Write temperature alert document via backend
+    func writeTemperatureAlertDocument(
+        deviceId: String,
+        deviceName: String,
+        currentTemp: Double,
+        limit: Double,
+        location: String,
+        severity: String
+    ) async -> Bool {
+        
+        // Use backend endpoint instead of calling Rubidex directly
+        let urlString = "\(backendURL)/documents/temperature-alert"
+        
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid backend URL")
+            return false
+        }
+        
+        // Create the request body for the backend
+        let requestBody: [String: Any] = [
+            "deviceId": deviceId,
+            "deviceName": deviceName,
+            "currentTemp": currentTemp,
+            "limit": limit,
+            "location": location,
+            "severity": severity
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            
+            print("🚨 Writing temperature alert document via backend...")
+            print("   Device: \(deviceName) (\(deviceId))")
+            print("   Location: \(location)")
+            print("   Temperature: \(String(format: "%.1f", currentTemp))°C")
+            print("   Limit: \(String(format: "%.1f", limit))°C")
+            print("   Severity: \(severity)")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📊 Backend API response status: \(httpResponse.statusCode)")
+                
+                if let responseData = String(data: data, encoding: .utf8) {
+                    print("📝 Backend API response: \(responseData)")
+                }
+                
+                if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                    print("✅ Temperature alert document successfully written via backend to Rubidex blockchain")
+                    return true
+                } else {
+                    print("❌ Failed to write temperature alert document via backend. Status: \(httpResponse.statusCode)")
+                    return false
+                }
+            } else {
+                print("❌ Invalid HTTP response from backend API")
+                return false
+            }
+            
+        } catch {
+            print("❌ Error writing temperature alert document via backend: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    // Update temperature alert document to mark as resolved via backend
+    func updateTemperatureAlertResolved(
+        deviceId: String,
+        deviceName: String,
+        resolvedAt: Date = Date()
+    ) async -> Bool {
+        
+        // Use backend endpoint instead of calling Rubidex directly
+        let urlString = "\(backendURL)/documents/temperature-alert-resolved"
+        
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid backend URL")
+            return false
+        }
+        
+        // Create the request body for the backend
+        let requestBody: [String: Any] = [
+            "deviceId": deviceId,
+            "deviceName": deviceName
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            
+            print("✅ Writing temperature alert resolution document via backend...")
+            print("   Device: \(deviceName) (\(deviceId))")
+            print("   Resolved at: \(resolvedAt)")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📊 Backend API response status: \(httpResponse.statusCode)")
+                
+                if let responseData = String(data: data, encoding: .utf8) {
+                    print("📝 Backend API response: \(responseData)")
+                }
+                
+                if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                    print("✅ Temperature alert resolution document successfully written via backend to Rubidex blockchain")
+                    return true
+                } else {
+                    print("❌ Failed to write temperature alert resolution document via backend. Status: \(httpResponse.statusCode)")
+                    return false
+                }
+            } else {
+                print("❌ Invalid HTTP response from backend API")
+                return false
+            }
+            
+        } catch {
+            print("❌ Error writing temperature alert resolution document via backend: \(error.localizedDescription)")
             return false
         }
     }

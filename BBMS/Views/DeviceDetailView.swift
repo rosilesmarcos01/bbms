@@ -539,8 +539,8 @@ struct DeviceDetailView: View {
                             // Document details
                             VStack(spacing: 6) {
                                 RubidexDataRow(label: "Document ID", value: String(latestDocument.id.prefix(16)) + "...")
-                                RubidexDataRow(label: "Core ID", value: latestDocument.fields.coreid)
-                                RubidexDataRow(label: "Name", value: latestDocument.fields.name)
+                                RubidexDataRow(label: "Core ID", value: latestDocument.fields.coreid ?? "N/A")
+                                RubidexDataRow(label: "Name", value: latestDocument.fields.name ?? "N/A")
                                 RubidexDataRow(label: "Published", value: latestDocument.fields.formattedPublishedDate)
                                 RubidexDataRow(label: "TTL", value: latestDocument.fields.ttl != nil ? "\(latestDocument.fields.ttl!)s" : "N/A")
                                 RubidexDataRow(label: "Created", value: latestDocument.formattedCreationDate)
@@ -600,6 +600,24 @@ struct DeviceDetailView: View {
             isResolved: false
         )
         alertService.addAlert(alert)
+        
+        // Automatically document this alert in Rubidex
+        Task {
+            let success = await RubidexService.shared.writeTemperatureAlertDocument(
+                deviceId: device.id.uuidString,
+                deviceName: device.name,
+                currentTemp: temperature,
+                limit: temperatureLimit,
+                location: device.location,
+                severity: "critical"
+            )
+            
+            if success {
+                print("✅ Manual temperature alert automatically documented in Rubidex blockchain")
+            } else {
+                print("⚠️ Failed to document manual temperature alert in Rubidex blockchain")
+            }
+        }
     }
     
     private func loadTemperatureLimitFromGlobalMonitor() {

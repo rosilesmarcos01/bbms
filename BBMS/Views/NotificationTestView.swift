@@ -126,6 +126,35 @@ struct NotificationTestView: View {
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(12)
                 
+                    // Rubidex Alert Documentation Test Card
+                    VStack(spacing: 16) {
+                        Text("📄 Test Rubidex Documentation")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Backend Status:")
+                                Spacer()
+                                Text("🟢 Connected via Backend")
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.green)
+                            }
+                            
+                            Text("✅ API key is automatically handled by the backend server")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                                .multilineTextAlignment(.leading)
+                        }
+                        
+                        Button("📄 Test Alert Documentation") {
+                            testRubidexDocumentation()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                
                     // Global Monitoring Status Card
                     VStack(spacing: 16) {
                         Text("🌡️ Global Monitoring Status")
@@ -273,30 +302,52 @@ struct NotificationTestView: View {
     }
     
     private func simulateBackgroundAlert() {
-        // Schedule a notification for 5 seconds from now to simulate background
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            let testDevice = Device(
-                name: "Background Test Sensor",
-                type: .temperature,
-                location: "Background Zone",
-                status: .warning,
-                value: 42.0,
-                unit: "°C",
-                lastUpdated: Date()
-            )
-            
-            print("📱 Simulating background alert")
+        if let firstDevice = globalMonitor.monitoredDevices.first {
+            print("🌡️ Simulating background alert for device: \(firstDevice.name)")
             
             notificationService.sendTemperatureAlert(
-                deviceName: testDevice.name,
-                deviceId: testDevice.id.uuidString,
-                currentTemp: 42.0,
+                deviceName: firstDevice.name,
+                deviceId: firstDevice.id.uuidString,
+                currentTemp: 45.0,
                 limit: 40.0,
-                location: testDevice.location
+                location: firstDevice.location
             )
+        } else {
+            print("⚠️ No monitored devices available for background simulation")
         }
+    }
+    
+    private func testRubidexDocumentation() {
+        let testDevice = Device(
+            name: "Rubidex Test Sensor",
+            type: .temperature,
+            location: "Documentation Test Lab",
+            status: .warning,
+            value: 45.5,
+            unit: "°C",
+            lastUpdated: Date()
+        )
         
-        print("⏰ Background alert scheduled for 5 seconds. Put app in background now!")
+        print("� Testing Rubidex alert documentation...")
+        
+        Task {
+            let success = await RubidexService.shared.writeTemperatureAlertDocument(
+                deviceId: testDevice.id.uuidString,
+                deviceName: testDevice.name,
+                currentTemp: 45.5,
+                limit: 40.0,
+                location: testDevice.location,
+                severity: "high"
+            )
+            
+            DispatchQueue.main.async {
+                if success {
+                    print("✅ Rubidex documentation test successful!")
+                } else {
+                    print("❌ Rubidex documentation test failed!")
+                }
+            }
+        }
     }
 }
 

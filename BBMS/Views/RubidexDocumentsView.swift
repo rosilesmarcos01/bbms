@@ -198,11 +198,11 @@ struct DocumentDetailView: View {
             // Document details
             VStack(spacing: 8) {
                 DocumentRow(label: "Document ID", value: String(document.id.prefix(16)) + "...")
-                DocumentRow(label: "Core ID", value: document.fields.coreid)
-                DocumentRow(label: "Name", value: document.fields.name)
+                DocumentRow(label: "Core ID", value: document.fields.coreid ?? "N/A")
+                DocumentRow(label: "Name", value: document.fields.name ?? "N/A")
                 DocumentRow(label: "Published", value: document.fields.formattedPublishedDate)
                 DocumentRow(label: "TTL", value: document.fields.ttl != nil ? "\(document.fields.ttl!)s" : "N/A")
-                DocumentRow(label: "Clearance", value: "\(document.clearance)")
+                DocumentRow(label: "Clearance", value: "\(document.clearance ?? 0)")
                 DocumentRow(label: "Created", value: document.formattedCreationDate)
                 DocumentRow(label: "Updated", value: document.formattedUpdateDate)
             }

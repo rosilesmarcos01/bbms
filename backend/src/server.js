@@ -8,6 +8,7 @@ require('dotenv').config();
 const rubidexService = require('./services/rubidexService');
 const deviceRoutes = require('./routes/deviceRoutes');
 const temperatureRoutes = require('./routes/temperatureRoutes');
+const documentsRoutes = require('./routes/documentsRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +29,7 @@ app.use(express.json());
 // Routes
 app.use('/api/devices', deviceRoutes);
 app.use('/api/temperature', temperatureRoutes);
+app.use('/api/documents', documentsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
