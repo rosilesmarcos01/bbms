@@ -4,16 +4,17 @@ import Charts
 struct DeviceDetailView: View {
     let device: Device
     @State private var historicalData: [DeviceDataPoint] = []
-    @State private var selectedTimeRange: TimeRange = .hour
     @State private var lastLectureData: [String: Any] = [:]
     @State private var isLoading = false
-    @State private var dataCache: [String: [DeviceDataPoint]] = [:]
+    @State private var dataCache: [DeviceDataPoint] = []
     @State private var lastDataLoadTime: Date = Date.distantPast
     @ObservedObject private var rubidexService = RubidexService.shared
     @State private var showingAllDocuments = false
     @State private var showingAPITest = false
     @State private var temperatureLimit: Double = 40.0
     @State private var showingLimitAlert = false
+    @State private var showingManualAlertSent = false
+    @State private var showingDeviceAlerts = false
     @ObservedObject private var alertService = AlertService.shared
     @EnvironmentObject var notificationService: NotificationService
     @EnvironmentObject var backgroundMonitoring: BackgroundMonitoringService
@@ -22,13 +23,6 @@ struct DeviceDetailView: View {
     // Computed property for device-specific storage key
     private var temperatureLimitKey: String {
         return "temperatureLimit_\(device.id.uuidString)"
-    }
-    
-    enum TimeRange: String, CaseIterable {
-        case hour = "1H"
-        case day = "24H"
-        case week = "7D"
-        case month = "30D"
     }
     
     // Helper function to extract temperature value from data
@@ -132,27 +126,22 @@ struct DeviceDetailView: View {
             print("🔄 DeviceDetailView appeared for device: \(device.name)")
             loadTemperatureLimitFromGlobalMonitor()
             
-            // Clean old cache entries (keep only current device)
-            let currentDevicePrefix = device.id.uuidString
-            dataCache = dataCache.filter { $0.key.hasPrefix(currentDevicePrefix) }
+            // Clear cache to force fresh data load
+            dataCache.removeAll()
             
-            // Load historical data
-            loadHistoricalData()
-            
-            // Refresh Rubidex data
+            // Force refresh backend data first, then load chart
+            print("🌐 Forcing backend data refresh for chart...")
             rubidexService.refreshData()
+            
+            // Load historical data after backend refresh completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                print("📊 Starting chart data load after backend refresh...")
+                self.loadHistoricalData()
+            }
         }
         .onDisappear {
             // Clean up cache when view disappears
-            if dataCache.count > 4 { // Keep only 4 time ranges cached
-                dataCache.removeAll()
-            }
-        }
-        .onChange(of: selectedTimeRange) { _, _ in
-            // Use debounced loading for time range changes
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.loadHistoricalData()
-            }
+            dataCache.removeAll()
         }
         .onChange(of: currentTemperatureValue) { _, newValue in
             checkTemperatureLimit(newValue)
@@ -166,11 +155,22 @@ struct DeviceDetailView: View {
             // No need to reload data, the chart will update automatically with the new limit value
         }
         .onChange(of: rubidexService.documents) { _, newDocuments in
-            // Only reload if we have significantly new data
-            if newDocuments.count != dataCache.values.first?.count {
-                print("🔄 Significant Rubidex data change, clearing cache and reloading")
+            // Immediately reload when new backend data arrives
+            print("🔄 Backend documents changed! Old count: \(dataCache.count), New count: \(newDocuments.count)")
+            if !newDocuments.isEmpty {
                 dataCache.removeAll()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    print("📊 Reloading chart with new backend data...")
+                    self.loadHistoricalData()
+                }
+            }
+        }
+        .onChange(of: rubidexService.latestDocument) { _, newDocument in
+            // When latest document updates, refresh to show current value
+            if let newDoc = newDocument {
+                print("🔄 Latest document updated with value: \(newDoc.fields.data)")
+                dataCache.removeAll()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.loadHistoricalData()
                 }
             }
@@ -194,6 +194,9 @@ struct DeviceDetailView: View {
         }
         .sheet(isPresented: $showingAPITest) {
             APITestView()
+        }
+        .sheet(isPresented: $showingDeviceAlerts) {
+            DeviceAlertsView(deviceId: device.id.uuidString, deviceName: device.name)
         }
     }
     
@@ -373,6 +376,80 @@ struct DeviceDetailView: View {
                             
                             Spacer()
                         }
+                        
+                        // Manual Alert Button (only for temperature devices)
+                        if device.type == .temperature {
+                            Divider()
+                                .background(Color.gray.opacity(0.3))
+                            
+                            VStack(spacing: 12) {
+                                Text("Quick Actions")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Color("BBMSBlack"))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                HStack(spacing: 12) {
+                                    // Send Manual Alert Button
+                                    Button(action: {
+                                        sendManualAlert()
+                                    }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: showingManualAlertSent ? "checkmark.circle.fill" : "bell.badge.fill")
+                                                .font(.title3)
+                                                .foregroundColor(Color("BBMSWhite"))
+                                            
+                                            Text(showingManualAlertSent ? "Sent!" : "Test Alert")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .foregroundColor(Color("BBMSWhite"))
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            LinearGradient(
+                                                colors: showingManualAlertSent ? 
+                                                    [Color("BBMSGreen"), Color("BBMSGreen").opacity(0.8)] :
+                                                    [Color("BBMSRed"), Color("BBMSRed").opacity(0.8)],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            )
+                                        )
+                                        .cornerRadius(12)
+                                        .shadow(color: showingManualAlertSent ? Color("BBMSGreen").opacity(0.3) : Color("BBMSRed").opacity(0.3), radius: 4, x: 0, y: 2)
+                                    }
+                                    .disabled(showingManualAlertSent)
+                                    .animation(.easeInOut(duration: 0.3), value: showingManualAlertSent)
+                                    
+                                    // View Device Alerts Button
+                                    Button(action: {
+                                        showDeviceAlerts()
+                                    }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "list.bullet.clipboard")
+                                                .font(.title3)
+                                                .foregroundColor(Color("BBMSWhite"))
+                                            
+                                            Text("View Alerts")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .foregroundColor(Color("BBMSWhite"))
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            LinearGradient(
+                                                colors: [Color("BBMSBlue"), Color("BBMSBlue").opacity(0.8)],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            )
+                                        )
+                                        .cornerRadius(12)
+                                        .shadow(color: Color("BBMSBlue").opacity(0.3), radius: 4, x: 0, y: 2)
+                                    }
+                                }
+                            }
+                        }
                     }
                     .padding(8)
                     .background(Color.gray.opacity(0.05))
@@ -390,13 +467,9 @@ struct DeviceDetailView: View {
     private var historicalDataSection: some View {
         HistoricalDataView(
             historicalData: historicalData,
-            selectedTimeRange: $selectedTimeRange,
             device: device,
             temperatureLimit: temperatureLimit,
             isLoading: isLoading,
-            formatAxisLabel: formatAxisLabel,
-            timeAxisStride: timeAxisStride(),
-            timeAxisCount: timeAxisCount(),
             onRefresh: loadHistoricalData
         )
     }
@@ -620,6 +693,67 @@ struct DeviceDetailView: View {
         }
     }
     
+    private func sendManualAlert() {
+        print("🚨 Manual alert triggered for device: \(device.name)")
+        
+        // Create manual alert with current temperature
+        let currentTemp = currentTemperatureValue
+        
+        // Create alert in the alert service
+        let alert = Alert(
+            title: "Manual Alert Test",
+            message: "Manual alert sent for '\(device.name)' in \(device.location). Current temperature: \(String(format: "%.1f", currentTemp))°C",
+            severity: .warning,
+            category: .hvac,
+            timestamp: Date(),
+            deviceId: device.id.uuidString,
+            zoneId: nil,
+            isRead: false,
+            isResolved: false
+        )
+        alertService.addAlert(alert)
+        
+        // Send push notification
+        notificationService.sendTemperatureAlert(
+            deviceName: device.name,
+            deviceId: device.id.uuidString,
+            currentTemp: currentTemp,
+            limit: temperatureLimit,
+            location: device.location
+        )
+        
+        // Show visual feedback
+        showingManualAlertSent = true
+        
+        // Document in Rubidex blockchain
+        Task {
+            let success = await RubidexService.shared.writeTemperatureAlertDocument(
+                deviceId: device.id.uuidString,
+                deviceName: device.name,
+                currentTemp: currentTemp,
+                limit: temperatureLimit,
+                location: device.location,
+                severity: "manual_test"
+            )
+            
+            if success {
+                print("✅ Manual alert documented in Rubidex blockchain")
+            } else {
+                print("⚠️ Failed to document manual alert in Rubidex blockchain")
+            }
+            
+            // Hide feedback after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                showingManualAlertSent = false
+            }
+        }
+    }
+    
+    private func showDeviceAlerts() {
+        print("📋 Showing alerts for device: \(device.name)")
+        showingDeviceAlerts = true
+    }
+    
     private func loadTemperatureLimitFromGlobalMonitor() {
         if device.type == .temperature {
             let globalLimit = globalMonitor.getTemperatureLimit(for: device.id.uuidString)
@@ -687,42 +821,12 @@ struct DeviceDetailView: View {
         return formatter.string(from: date)
     }
     
-    private func formatAxisLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        switch selectedTimeRange {
-        case .hour:
-            formatter.dateFormat = "HH:mm"
-        case .day:
-            formatter.dateFormat = "HH:mm"
-        case .week:
-            formatter.dateFormat = "MM/dd"
-        case .month:
-            formatter.dateFormat = "MM/dd"
-        }
-        return formatter.string(from: date)
-    }
-    
-    private func timeAxisStride() -> Calendar.Component {
-        switch selectedTimeRange {
-        case .hour: return .minute
-        case .day: return .hour
-        case .week: return .hour
-        case .month: return .day
-        }
-    }
-    
-    private func timeAxisCount() -> Int {
-        switch selectedTimeRange {
-        case .hour: return 10
-        case .day: return 4
-        case .week: return 12
-        case .month: return 5
-        }
-    }
-    
     private func loadHistoricalData() {
         // Prevent multiple concurrent loads and rate limiting
-        guard !isLoading else { return }
+        guard !isLoading else { 
+            print("⏱️ Already loading data, skipping...")
+            return 
+        }
         
         // Rate limiting: don't reload more than once every 2 seconds
         let now = Date()
@@ -733,107 +837,127 @@ struct DeviceDetailView: View {
         
         lastDataLoadTime = now
         
-        // Check cache first
-        let cacheKey = "\(device.id.uuidString)-\(selectedTimeRange.rawValue)"
-        if let cachedData = dataCache[cacheKey], !cachedData.isEmpty {
-            print("💾 Using cached data for \(selectedTimeRange.rawValue)")
-            self.historicalData = cachedData
-            return
-        }
+        // Always prioritize fresh backend data over cache for charts
+        print("🔄 Loading fresh chart data for device: \(device.name)")
+        print("📊 Backend status - Documents: \(rubidexService.documents.count), Loading: \(rubidexService.isLoading), Error: \(rubidexService.errorMessage ?? "none")")
         
         isLoading = true
-        print("🔄 Loading historical data for device: \(device.name)")
         
-        // Use background queue for data processing
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Try to get real data from Rubidex service first
-            if !self.rubidexService.documents.isEmpty {
-                self.loadHistoricalDataFromRubidexAsync()
-            } else {
-                // If no Rubidex data, generate consistent device-based data
-                self.loadHistoricalDataFromDeviceAsync()
-            }
+        // Try to use real backend data first
+        if !rubidexService.documents.isEmpty {
+            print("✅ Using backend data (\(rubidexService.documents.count) documents)")
+            loadHistoricalDataFromRubidexAsync()
+        } else {
+            // If no backend data available, use fallback but log why
+            print("⚠️ No backend data available - RubidexService documents: \(rubidexService.documents.count)")
+            print("📱 Using fallback data generation...")
+            loadHistoricalDataFromDeviceAsync()
         }
     }
     
     private func loadHistoricalDataFromRubidexAsync() {
-        print("📊 Processing Rubidex documents (\(rubidexService.documents.count) documents)")
+        print("📊 Processing Rubidex backend documents (\(rubidexService.documents.count) total)")
         
         var data: [DeviceDataPoint] = []
         
-        // Convert Rubidex documents to data points
-        for document in rubidexService.documents.sorted(by: { $0.updateDate < $1.updateDate }) {
+        // Convert Rubidex documents to data points and sort by date
+        let sortedDocuments = rubidexService.documents.sorted(by: { $0.updateDate < $1.updateDate })
+        print("📊 Sorted documents by timestamp, processing...")
+        
+        for (index, document) in sortedDocuments.enumerated() {
             let extracted = extractTemperatureValue(document.fields.data)
             if let value = Double(extracted.value), value > 0 {
                 data.append(DeviceDataPoint(
                     id: UUID(),
                     timestamp: document.updateDate,
-                    value: value
+                    value: value,
+                    position: index
                 ))
+                print("📊 Document \(index + 1): \(value)°C at \(document.updateDate)")
             }
         }
         
-        // Filter by time range
-        let filteredData = filterDataByTimeRange(data)
+        // Ensure we have good time distribution - take the last 10 readings
+        let finalData: [DeviceDataPoint]
+        if data.count >= 10 {
+            let lastTenData = Array(data.suffix(10))
+            // Re-assign positions 0-9 for even distribution
+            finalData = lastTenData.enumerated().map { index, point in
+                DeviceDataPoint(
+                    id: point.id,
+                    timestamp: point.timestamp,
+                    value: point.value,
+                    position: index
+                )
+            }
+            print("✅ Using last 10 readings from \(data.count) total backend readings")
+        } else if data.count > 0 {
+            // Re-assign positions for even distribution
+            finalData = data.enumerated().map { index, point in
+                DeviceDataPoint(
+                    id: point.id,
+                    timestamp: point.timestamp,
+                    value: point.value,
+                    position: index
+                )
+            }
+            print("✅ Using all \(data.count) available backend readings")
+        } else {
+            finalData = []
+            print("⚠️ No valid temperature data found in backend documents")
+        }
         
         DispatchQueue.main.async {
-            // If we don't have enough data points, supplement with device-based data
-            if filteredData.count < 5 {
-                print("⚠️ Insufficient Rubidex data (\(filteredData.count) points), using device data")
+            if finalData.isEmpty {
+                print("📱 No valid backend data, switching to fallback generation")
                 self.loadHistoricalDataFromDeviceAsync()
                 return
             }
             
-            // Cache the result
-            let cacheKey = "\(self.device.id.uuidString)-\(self.selectedTimeRange.rawValue)"
-            self.dataCache[cacheKey] = filteredData
+            // Log the final data points for debugging
+            print("📊 Final chart data points (evenly distributed):")
+            for point in finalData {
+                let isCurrentReading = point.id == finalData.last?.id
+                print("   Position \(point.position): \(point.value)°C \(isCurrentReading ? "(CURRENT - GREEN)" : "")")
+            }
             
-            self.historicalData = filteredData
+            // Cache and set the result
+            self.dataCache = finalData
+            self.historicalData = finalData
             self.isLoading = false
-            print("✅ Loaded \(filteredData.count) real data points from Rubidex")
+            
+            let currentValue = finalData.last?.value ?? 0
+            print("✅ Chart loaded with \(finalData.count) backend readings (current: \(currentValue)°C)")
         }
     }
     
     private func loadHistoricalDataFromDeviceAsync() {
-        print("📊 Generating consistent data from device value")
+        print("📊 Generating fallback data using current device value")
         
-        // Pre-calculate time parameters
+        // Get the actual current temperature from the latest Rubidex document or device
+        let actualCurrentValue: Double
+        if let latestDocument = rubidexService.latestDocument {
+            let extracted = extractTemperatureValue(latestDocument.fields.data)
+            actualCurrentValue = Double(extracted.value) ?? currentTemperatureValue
+        } else {
+            actualCurrentValue = currentTemperatureValue
+        }
+        
+        print("🌡️ Using actual current value: \(actualCurrentValue)")
+        
+        // Create realistic time distribution - 10 readings over last 1.5 hours
         let calendar = Calendar.current
         let endDate = Date()
-        var startDate: Date
-        var interval: TimeInterval
-        var numberOfPoints: Int
+        let numberOfPoints = 10
+        let interval: TimeInterval = 540 // 9 minutes between readings (1.5 hours total)
+        let startDate = calendar.date(byAdding: .second, value: -Int(interval * Double(numberOfPoints - 1)), to: endDate) ?? endDate
         
-        switch selectedTimeRange {
-        case .hour:
-            startDate = calendar.date(byAdding: .hour, value: -1, to: endDate) ?? endDate
-            interval = 300 // 5 minutes
-            numberOfPoints = 12
-        case .day:
-            startDate = calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate
-            interval = 3600 // 1 hour
-            numberOfPoints = 24
-        case .week:
-            startDate = calendar.date(byAdding: .day, value: -7, to: endDate) ?? endDate
-            interval = 14400 // 4 hours
-            numberOfPoints = 42
-        case .month:
-            startDate = calendar.date(byAdding: .day, value: -30, to: endDate) ?? endDate
-            interval = 86400 // 1 day
-            numberOfPoints = 30
-        }
+        // Calculate base historical value (slightly lower than current)
+        let baseHistoricalValue = actualCurrentValue * 0.9 // Start 10% lower than current
         
-        // Pre-calculate base value
-        let baseValue: Double
-        if device.type == .temperature {
-            baseValue = currentTemperatureValue > 0 ? currentTemperatureValue : 22.0
-        } else {
-            baseValue = device.value > 0 ? device.value : 50.0
-        }
-        
-        // Generate data points efficiently
+        // Generate data points with realistic progression toward current value
         var data: [DeviceDataPoint] = []
-        data.reserveCapacity(numberOfPoints) // Pre-allocate capacity
+        data.reserveCapacity(numberOfPoints)
         
         let seed = device.id.uuidString.hash
         var generator = SeededRandomNumberGenerator(seed: seed)
@@ -841,54 +965,37 @@ struct DeviceDetailView: View {
         for i in 0..<numberOfPoints {
             let pointDate = startDate.addingTimeInterval(Double(i) * interval)
             
-            // Simplified pattern calculation
-            let timeProgress = Double(i) / Double(numberOfPoints)
-            let dailyPattern = sin(timeProgress * 2 * .pi) * 1.5
-            let randomVariation = Double.random(in: -1.5...1.5, using: &generator)
-            let trendVariation = cos(timeProgress * .pi) * 0.8
-            
             let value: Double
-            if device.type == .temperature {
-                value = max(10.0, min(50.0, baseValue + dailyPattern + randomVariation + trendVariation))
+            if i == numberOfPoints - 1 {
+                // Last point should be the current value
+                value = actualCurrentValue
             } else {
-                value = max(0, baseValue + randomVariation + trendVariation * 0.5)
+                // Generate historical variations
+                let randomVariation = Double.random(in: -2.0...2.0, using: &generator)
+                
+                if device.type == .temperature {
+                    value = max(5.0, min(60.0, baseHistoricalValue + randomVariation))
+                } else {
+                    value = max(0, baseHistoricalValue + randomVariation)
+                }
             }
             
             data.append(DeviceDataPoint(
                 id: UUID(),
                 timestamp: pointDate,
-                value: value
+                value: value,
+                position: i // Even distribution positions 0-9
             ))
         }
         
         DispatchQueue.main.async {
             // Cache the result
-            let cacheKey = "\(self.device.id.uuidString)-\(self.selectedTimeRange.rawValue)"
-            self.dataCache[cacheKey] = data
+            self.dataCache = data
             
             self.historicalData = data
             self.isLoading = false
-            print("✅ Generated \(data.count) consistent data points")
+            print("✅ Generated \(data.count) realistic fallback readings (current: \(actualCurrentValue))")
         }
-    }
-    
-    private func filterDataByTimeRange(_ data: [DeviceDataPoint]) -> [DeviceDataPoint] {
-        let calendar = Calendar.current
-        let endDate = Date()
-        var startDate: Date
-        
-        switch selectedTimeRange {
-        case .hour:
-            startDate = calendar.date(byAdding: .hour, value: -1, to: endDate) ?? endDate
-        case .day:
-            startDate = calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate
-        case .week:
-            startDate = calendar.date(byAdding: .day, value: -7, to: endDate) ?? endDate
-        case .month:
-            startDate = calendar.date(byAdding: .day, value: -30, to: endDate) ?? endDate
-        }
-        
-        return data.filter { $0.timestamp >= startDate && $0.timestamp <= endDate }
     }
     
     private func loadRubidexData() {
@@ -919,6 +1026,7 @@ struct DeviceDataPoint: Identifiable {
     let id: UUID
     let timestamp: Date
     let value: Double
+    let position: Int // Add position for even distribution on X-axis
 }
 
 // Seeded random number generator for consistent data generation
@@ -1093,13 +1201,9 @@ struct CurrentStatusView: View {
 
 struct HistoricalDataView: View {
     let historicalData: [DeviceDataPoint]
-    @Binding var selectedTimeRange: DeviceDetailView.TimeRange
     let device: Device
     let temperatureLimit: Double
     let isLoading: Bool
-    let formatAxisLabel: (Date) -> String
-    let timeAxisStride: Calendar.Component
-    let timeAxisCount: Int
     let onRefresh: () -> Void
     
     // Cached computed properties for better performance
@@ -1135,10 +1239,16 @@ struct HistoricalDataView: View {
         return (min: adjustedMin, max: adjustedMax)
     }
     
+    // Check for limit violations
+    private var violatingDataPoints: [DeviceDataPoint] {
+        guard device.type == .temperature else { return [] }
+        return historicalData.filter { $0.value > temperatureLimit }
+    }
+    
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("Historical Data")
+                Text("Recent Readings")
                     .font(.headline)
                     .foregroundColor(Color("BBMSBlack"))
                 
@@ -1177,7 +1287,7 @@ struct HistoricalDataView: View {
                 
                 // Data points count indicator
                 if !historicalData.isEmpty {
-                    Text("\(historicalData.count) points")
+                    Text("\(historicalData.count) readings")
                         .font(.caption)
                         .foregroundColor(.gray)
                         .padding(.horizontal, 6)
@@ -1194,7 +1304,7 @@ struct HistoricalDataView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
                         .scaleEffect(1.2)
                     
-                    Text("Loading historical data...")
+                    Text("Loading recent readings...")
                         .font(.subheadline)
                         .foregroundColor(.gray)
                         .padding(.top, 8)
@@ -1209,7 +1319,7 @@ struct HistoricalDataView: View {
                     Chart(historicalData) { dataPoint in
                         // Area fill under the line (render first, behind the line)
                         AreaMark(
-                            x: .value("Time", dataPoint.timestamp),
+                            x: .value("Position", dataPoint.position),
                             y: .value("Value", dataPoint.value),
                             stacking: .unstacked
                         )
@@ -1229,20 +1339,28 @@ struct HistoricalDataView: View {
                         
                         // Main data line
                         LineMark(
-                            x: .value("Time", dataPoint.timestamp),
+                            x: .value("Position", dataPoint.position),
                             y: .value("Value", dataPoint.value)
                         )
                         .foregroundStyle(Color("BBMSGold"))
                         .lineStyle(StrokeStyle(lineWidth: 3))
                         .interpolationMethod(.catmullRom)
                         
-                        // Data points for better visibility
+                        // Data points - highlight violations in red, current value green
                         PointMark(
-                            x: .value("Time", dataPoint.timestamp),
+                            x: .value("Position", dataPoint.position),
                             y: .value("Value", dataPoint.value)
                         )
-                        .foregroundStyle(Color("BBMSGold"))
-                        .symbolSize(25)
+                        .foregroundStyle(
+                            // Check if this is the current reading (last in array)
+                            dataPoint.id == historicalData.last?.id ? Color("BBMSGreen") : // Current value green
+                            (device.type == .temperature && dataPoint.value > temperatureLimit ? .red : Color("BBMSGold")) // Violations red, others gold
+                        )
+                        .symbolSize(
+                            // Check if this is the current reading (last in array)
+                            dataPoint.id == historicalData.last?.id ? 50 : // Current value larger
+                            (device.type == .temperature && dataPoint.value > temperatureLimit ? 40 : 25) // Violations medium, normal small
+                        )
                         
                         // Add temperature limit line for temperature sensors with animation
                         if device.type == .temperature {
@@ -1262,18 +1380,20 @@ struct HistoricalDataView: View {
                     }
                     .frame(height: 220) // Fixed height
                     .chartXAxis {
-                        AxisMarks(values: .stride(by: timeAxisStride, count: timeAxisCount)) { value in
-                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(Color.gray.opacity(0.3))
-                            
-                            AxisTick(stroke: StrokeStyle(lineWidth: 1))
-                                .foregroundStyle(Color("BBMSBlack").opacity(0.6))
-                            
+                        AxisMarks(values: Array(0..<historicalData.count)) { value in
                             AxisValueLabel {
-                                if let date = value.as(Date.self) {
-                                    Text(formatAxisLabel(date))
-                                        .font(.caption)
-                                        .foregroundStyle(Color("BBMSBlack"))
+                                if let position = value.as(Int.self) {
+                                    // Show reading numbers: 1, 2, 3... with last one as "Current"
+                                    if position == historicalData.count - 1 {
+                                        Text("Now")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color("BBMSGreen"))
+                                            .fontWeight(.medium)
+                                    } else {
+                                        Text("\(position + 1)")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color("BBMSBlack").opacity(0.6))
+                                    }
                                 }
                             }
                         }
@@ -1314,7 +1434,7 @@ struct HistoricalDataView: View {
                     }
                     .clipped() // Ensure entire chart is clipped to its frame
                     .animation(.easeOut(duration: 0.3), value: temperatureLimit) // Faster animation
-                    .id("chart-\(selectedTimeRange.rawValue)") // Simplified ID
+                    .id("recent-readings-chart") // Simplified ID
                     .padding()
                 }
                 .frame(height: 260) // Fixed container height including padding
@@ -1324,6 +1444,42 @@ struct HistoricalDataView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color("BBMSGold"), lineWidth: 1)
                 )
+                
+                // Chart legend for point meanings
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color("BBMSGold"))
+                            .frame(width: 8, height: 8)
+                        Text("Historical")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color("BBMSGreen"))
+                            .frame(width: 12, height: 12)
+                        Text("Current")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    if device.type == .temperature {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 10, height: 10)
+                            Text("Violation")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
@@ -1334,7 +1490,7 @@ struct HistoricalDataView: View {
                         .font(.headline)
                         .foregroundColor(.gray)
                     
-                    Text("Historical data will appear here once readings are collected")
+                    Text("Recent readings will appear here once data is collected")
                         .font(.caption)
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
@@ -1344,26 +1500,6 @@ struct HistoricalDataView: View {
                 .background(Color.gray.opacity(0.05))
                 .cornerRadius(12)
             }
-            
-            // Time Range Buttons
-            HStack(spacing: 12) {
-                ForEach(DeviceDetailView.TimeRange.allCases, id: \.self) { range in
-                    Button(action: { 
-                        selectedTimeRange = range 
-                        print("📊 Selected time range: \(range.rawValue)")
-                    }) {
-                        Text(range.rawValue)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(selectedTimeRange == range ? Color("BBMSWhite") : Color("BBMSBlack"))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(selectedTimeRange == range ? Color("BBMSGold") : Color.gray.opacity(0.2))
-                            .cornerRadius(8)
-                    }
-                }
-            }
-            
             // Chart Statistics
             if !historicalData.isEmpty {
                 HStack(spacing: 20) {
@@ -1384,6 +1520,15 @@ struct HistoricalDataView: View {
                         value: String(format: "%.1f", historicalData.map { $0.value }.max() ?? 0),
                         unit: device.type == .temperature ? "°C" : device.unit
                     )
+                    
+                    // Add violations statistic for temperature sensors
+                    if device.type == .temperature && !violatingDataPoints.isEmpty {
+                        StatisticView(
+                            title: "Violations",
+                            value: "\(violatingDataPoints.count)",
+                            unit: "readings"
+                        )
+                    }
                 }
                 .padding(.top, 8)
             }
@@ -1616,15 +1761,240 @@ struct WaterWaveView: View {
     }
 }
 
+struct DeviceAlertsView: View {
+    let deviceId: String
+    let deviceName: String
+    @ObservedObject private var alertService = AlertService.shared
+    @Environment(\.dismiss) private var dismiss
+    
+    // Filter alerts for this specific device
+    private var deviceAlerts: [Alert] {
+        alertService.alerts.filter { alert in
+            alert.deviceId == deviceId
+        }.sorted { $0.timestamp > $1.timestamp } // Most recent first
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                if deviceAlerts.isEmpty {
+                    // Empty state
+                    VStack(spacing: 20) {
+                        Spacer()
+                        
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        
+                        Text("No Alerts")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.gray)
+                        
+                        Text("No alerts have been generated for '\(deviceName)' yet.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                        
+                        Spacer()
+                    }
+                } else {
+                    // Alerts list
+                    List {
+                        Section {
+                            ForEach(deviceAlerts) { alert in
+                                DeviceAlertRowView(alert: alert)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                            }
+                        } header: {
+                            HStack {
+                                Text("Alerts for \(deviceName)")
+                                    .font(.headline)
+                                    .foregroundColor(Color("BBMSBlack"))
+                                
+                                Spacer()
+                                
+                                Text("\(deviceAlerts.count)")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Color("BBMSGold"))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color("BBMSGold").opacity(0.1))
+                                    .cornerRadius(6)
+                            }
+                            .padding(.bottom, 8)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .background(Color.gray.opacity(0.05))
+                }
+            }
+            .navigationTitle("Device Alerts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .foregroundColor(Color("BBMSGold"))
+                }
+                
+                if !deviceAlerts.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            Button("Mark All as Read") {
+                                for alert in deviceAlerts.filter({ !$0.isRead }) {
+                                    alertService.markAsRead(alert)
+                                }
+                            }
+                            
+                            Button("Clear Resolved Alerts") {
+                                for alert in deviceAlerts.filter({ $0.isResolved }) {
+                                    alertService.deleteAlert(alert)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .foregroundColor(Color("BBMSGold"))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct DeviceAlertRowView: View {
+    let alert: Alert
+    @ObservedObject private var alertService = AlertService.shared
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                // Severity indicator
+                Circle()
+                    .fill(severityColor)
+                    .frame(width: 12, height: 12)
+                
+                // Alert title
+                Text(alert.title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color("BBMSBlack"))
+                    .multilineTextAlignment(.leading)
+                
+                Spacer()
+                
+                // Status badges
+                VStack(alignment: .trailing, spacing: 4) {
+                    if !alert.isRead {
+                        Text("NEW")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color("BBMSRed"))
+                            .cornerRadius(4)
+                    }
+                    
+                    if alert.isResolved {
+                        Text("RESOLVED")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color("BBMSGreen"))
+                            .cornerRadius(4)
+                    }
+                }
+            }
+            
+            // Alert message
+            Text(alert.message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Timestamp and actions
+            HStack {
+                Text(timeAgo(from: alert.timestamp))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                
+                Spacer()
+                
+                HStack(spacing: 12) {
+                    if !alert.isRead {
+                        Button("Mark Read") {
+                            alertService.markAsRead(alert)
+                        }
+                        .font(.caption)
+                        .foregroundColor(Color("BBMSBlue"))
+                    }
+                    
+                    if !alert.isResolved {
+                        Button("Resolve") {
+                            alertService.markAsResolved(alert)
+                        }
+                        .font(.caption)
+                        .foregroundColor(Color("BBMSGreen"))
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color("BBMSWhite"))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+    
+    private var severityColor: Color {
+        switch alert.severity {
+        case .info:
+            return Color("BBMSBlue")
+        case .warning:
+            return Color("BBMSGold")
+        case .critical:
+            return Color("BBMSRed")
+        case .success:
+            return Color("BBMSGreen")
+        }
+    }
+    
+    private func timeAgo(from date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        
+        if interval < 60 {
+            return "Just now"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        }
+    }
+}
+
 #Preview {
     NavigationView {
         DeviceDetailView(device: Device(
-            name: "Water Tank Level",
-            type: .waterLevel,
-            location: "Storage Area",
+            name: "Rubidex® Temperature Sensor",
+            type: .temperature,
+            location: "Portable Unit",
             status: .online,
-            value: 75.0,
-            unit: "L",
+            value: 28.5,
+            unit: "°C",
             lastUpdated: Date()
         ))
     }
