@@ -12,6 +12,9 @@ struct User: Identifiable, Codable {
     var joinDate: Date
     var isActive: Bool
     var preferences: UserPreferences
+    var accessLevel: AccessLevel
+    var lastLoginAt: Date?
+    var createdAt: Date
     
     init(
         id: UUID = UUID(),
@@ -22,7 +25,10 @@ struct User: Identifiable, Codable {
         department: String = "General",
         joinDate: Date = Date(),
         isActive: Bool = true,
-        preferences: UserPreferences = UserPreferences()
+        preferences: UserPreferences = UserPreferences(),
+        accessLevel: AccessLevel = .basic,
+        lastLoginAt: Date? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.name = name
@@ -33,15 +39,31 @@ struct User: Identifiable, Codable {
         self.joinDate = joinDate
         self.isActive = isActive
         self.preferences = preferences
+        self.accessLevel = accessLevel
+        self.lastLoginAt = lastLoginAt
+        self.createdAt = createdAt
     }
 }
 
 // MARK: - User Role
 enum UserRole: String, CaseIterable, Codable {
-    case admin = "Administrator"
-    case manager = "Manager"
-    case technician = "Technician"
-    case user = "User"
+    case admin = "admin"
+    case manager = "manager"
+    case technician = "technician"
+    case user = "user"
+    
+    var displayName: String {
+        switch self {
+        case .admin:
+            return "Administrator"
+        case .manager:
+            return "Manager"
+        case .technician:
+            return "Technician"
+        case .user:
+            return "User"
+        }
+    }
     
     var color: Color {
         switch self {
@@ -70,6 +92,53 @@ enum UserRole: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Access Level
+enum AccessLevel: String, CaseIterable, Codable {
+    case basic = "basic"
+    case standard = "standard"
+    case elevated = "elevated"
+    case admin = "admin"
+    
+    var displayName: String {
+        switch self {
+        case .basic:
+            return "Basic Access"
+        case .standard:
+            return "Standard Access"
+        case .elevated:
+            return "Elevated Access"
+        case .admin:
+            return "Administrator Access"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .basic:
+            return .green
+        case .standard:
+            return .blue
+        case .elevated:
+            return Color("BBMSGold")
+        case .admin:
+            return .red
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .basic:
+            return "person.fill"
+        case .standard:
+            return "person.badge.plus.fill"
+        case .elevated:
+            return "person.badge.key.fill"
+        case .admin:
+            return "crown.fill"
+        }
+    }
+}
+
 // MARK: - User Preferences
 struct UserPreferences: Codable {
     var notificationsEnabled: Bool
@@ -80,6 +149,11 @@ struct UserPreferences: Codable {
     var language: String
     var temperatureUnit: TemperatureUnit
     
+    // Biometric preferences
+    var enableBiometricLogin: Bool
+    var enableBuildingAccess: Bool
+    var requireBiometricForSensitiveActions: Bool
+    
     init(
         notificationsEnabled: Bool = true,
         darkModeEnabled: Bool = false,
@@ -87,7 +161,10 @@ struct UserPreferences: Codable {
         emailNotifications: Bool = true,
         pushNotifications: Bool = true,
         language: String = "English",
-        temperatureUnit: TemperatureUnit = .celsius
+        temperatureUnit: TemperatureUnit = .celsius,
+        enableBiometricLogin: Bool = false,
+        enableBuildingAccess: Bool = false,
+        requireBiometricForSensitiveActions: Bool = false
     ) {
         self.notificationsEnabled = notificationsEnabled
         self.darkModeEnabled = darkModeEnabled
@@ -96,6 +173,9 @@ struct UserPreferences: Codable {
         self.pushNotifications = pushNotifications
         self.language = language
         self.temperatureUnit = temperatureUnit
+        self.enableBiometricLogin = enableBiometricLogin
+        self.enableBuildingAccess = enableBuildingAccess
+        self.requireBiometricForSensitiveActions = requireBiometricForSensitiveActions
     }
 }
 

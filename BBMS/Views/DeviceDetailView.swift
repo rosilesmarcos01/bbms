@@ -15,6 +15,9 @@ struct DeviceDetailView: View {
     @State private var showingLimitAlert = false
     @State private var showingManualAlertSent = false
     @State private var showingDeviceAlerts = false
+    @State private var isRefreshing = false
+    @State private var lastRefreshTime = Date()
+    @State private var cachedLatestDocument: RubidexDocument?
     @ObservedObject private var alertService = AlertService.shared
     @EnvironmentObject var notificationService: NotificationService
     @EnvironmentObject var backgroundMonitoring: BackgroundMonitoringService
@@ -93,6 +96,98 @@ struct DeviceDetailView: View {
         return device.type == .temperature && currentTemperatureValue > temperatureLimit
     }
     
+    // Parse blockchain data to extract temperature and battery values
+    private func parseBlockchainData(_ data: String) -> (temperature: String?, battery: String?) {
+        // Try to parse JSON format first
+        if let jsonData = data.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            
+            var temperature: String?
+            var battery: String?
+            
+            // Extract temperature
+            if let temp = json["temp"] as? String {
+                let tempInfo = parseTemperatureString(temp)
+                if !tempInfo.unit.isEmpty {
+                    temperature = "\(tempInfo.value) ºC"
+                }
+            } else if let temp = json["temperature"] as? String {
+                let tempInfo = parseTemperatureString(temp)
+                if !tempInfo.unit.isEmpty {
+                    temperature = "\(tempInfo.value) ºC"
+                }
+            } else if let temp = json["temp"] as? Double {
+                temperature = "\(String(format: "%.1f", temp)) ºC"
+            } else if let temp = json["temperature"] as? Double {
+                temperature = "\(String(format: "%.1f", temp)) ºC"
+            }
+            
+            // Extract battery
+            if let batt = json["battery"] as? String {
+                if let battValue = Double(batt.replacingOccurrences(of: "V", with: "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    battery = "\(String(format: "%.1f", battValue)) V"
+                } else {
+                    battery = batt.contains("V") ? batt : "\(batt) V"
+                }
+            } else if let batt = json["battery"] as? Double {
+                battery = "\(String(format: "%.1f", batt)) V"
+            } else if let batt = json["volt"] as? String {
+                if let battValue = Double(batt.replacingOccurrences(of: "V", with: "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    battery = "\(String(format: "%.1f", battValue)) V"
+                } else {
+                    battery = batt.contains("V") ? batt : "\(batt) V"
+                }
+            } else if let batt = json["volt"] as? Double {
+                battery = "\(String(format: "%.1f", batt)) V"
+            }
+            
+            return (temperature: temperature, battery: battery)
+        }
+        
+        // Try to parse non-JSON formats
+        var temperature: String?
+        var battery: String?
+        
+        // Look for temperature patterns
+        let tempPatterns = [
+            #"([0-9]+\.?[0-9]*)\s*ºC"#,
+            #"([0-9]+\.?[0-9]*)\s*°C"#,
+            #"([0-9]+\.?[0-9]*)\s*C"#,
+            #"temp[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"temperature[:\s]+([0-9]+\.?[0-9]*)"#
+        ]
+        
+        for pattern in tempPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: data, range: NSRange(data.startIndex..., in: data)),
+               let range = Range(match.range(at: 1), in: data) {
+                let value = String(data[range])
+                temperature = "\(value) ºC"
+                break
+            }
+        }
+        
+        // Look for battery/voltage patterns
+        let battPatterns = [
+            #"([0-9]+\.?[0-9]*)\s*V"#,
+            #"battery[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"volt[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"batt[:\s]+([0-9]+\.?[0-9]*)"#
+        ]
+        
+        for pattern in battPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: data, range: NSRange(data.startIndex..., in: data)),
+               let range = Range(match.range(at: 1), in: data) {
+                let value = String(data[range])
+                battery = "\(value) V"
+                break
+            }
+        }
+        
+        return (temperature: temperature, battery: battery)
+    }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -119,12 +214,20 @@ struct DeviceDetailView: View {
             }
             .padding()
         }
+        .refreshable {
+            await refreshAllData()
+        }
         .navigationTitle("Device Details")
         .navigationBarTitleDisplayMode(.inline)
         .background(.gray.opacity(0.05))
         .onAppear {
             print("🔄 DeviceDetailView appeared for device: \(device.name)")
             loadTemperatureLimitFromGlobalMonitor()
+            
+            // Cache current document before refresh to prevent UI wiping
+            if let currentDoc = rubidexService.latestDocument {
+                cachedLatestDocument = currentDoc
+            }
             
             // Clear cache to force fresh data load
             dataCache.removeAll()
@@ -155,6 +258,10 @@ struct DeviceDetailView: View {
             // No need to reload data, the chart will update automatically with the new limit value
         }
         .onChange(of: rubidexService.documents) { _, newDocuments in
+            // Update cache when new documents arrive
+            if let latest = rubidexService.latestDocument {
+                cachedLatestDocument = latest
+            }
             // Immediately reload when new backend data arrives
             print("🔄 Backend documents changed! Old count: \(dataCache.count), New count: \(newDocuments.count)")
             if !newDocuments.isEmpty {
@@ -166,9 +273,13 @@ struct DeviceDetailView: View {
             }
         }
         .onChange(of: rubidexService.latestDocument) { _, newDocument in
-            // When latest document updates, refresh to show current value
+            // Update cache when latest document changes
             if let newDoc = newDocument {
+                cachedLatestDocument = newDoc
                 print("🔄 Latest document updated with value: \(newDoc.fields.data)")
+            }
+            // When latest document updates, refresh to show current value
+            if newDocument != nil {
                 dataCache.removeAll()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.loadHistoricalData()
@@ -488,6 +599,13 @@ struct DeviceDetailView: View {
                             Text("Rubidex® DB ")
                                 .font(.headline)
                                 .foregroundColor(Color("BBMSBlack"))
+                            
+                            // Subtle loading indicator during refresh
+                            if rubidexService.isLoading || isRefreshing {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
+                                    .scaleEffect(0.6)
+                            }
                         }
                         
                         Spacer()
@@ -500,6 +618,13 @@ struct DeviceDetailView: View {
                             Text("Blockchain Verified")
                                 .font(.caption)
                                 .foregroundColor(Color("BBMSGreen"))
+                            
+                            // Show last refresh time if recently refreshed
+                            if Date().timeIntervalSince(lastRefreshTime) < 10 {
+                                Text("• Updated")
+                                    .font(.caption2)
+                                    .foregroundColor(Color("BBMSGold"))
+                            }
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -510,18 +635,10 @@ struct DeviceDetailView: View {
                     Divider()
                         .background(Color("BBMSGold"))
                     
-                    if rubidexService.isLoading {
-                        VStack {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
-                            Text("Loading blockchain data...")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                                .padding(.top, 4)
-                        }
-                        .frame(height: 100)
-                        .frame(maxWidth: .infinity)
-                    } else if let errorMessage = rubidexService.errorMessage {
+                    // Use cached data during loading to prevent wiping
+                    let displayDocument = rubidexService.latestDocument ?? cachedLatestDocument
+                    
+                    if let errorMessage = rubidexService.errorMessage, displayDocument == nil {
                         VStack {
                             Image(systemName: "exclamationmark.triangle")
                                 .foregroundColor(.orange)
@@ -536,7 +653,9 @@ struct DeviceDetailView: View {
                                 .multilineTextAlignment(.center)
                             
                             Button("Retry") {
-                                rubidexService.refreshData()
+                                Task {
+                                    await refreshAllData()
+                                }
                             }
                             .font(.caption)
                             .foregroundColor(Color("BBMSBlue"))
@@ -544,7 +663,7 @@ struct DeviceDetailView: View {
                         }
                         .frame(height: 100)
                         .frame(maxWidth: .infinity)
-                    } else if let latestDocument = rubidexService.latestDocument {
+                    } else if let latestDocument = displayDocument {
                         VStack(spacing: 12) {
                             HStack {
                                 Text("Latest Reading:")
@@ -581,7 +700,9 @@ struct DeviceDetailView: View {
                                     }
                                     
                                     Button(action: {
-                                        rubidexService.refreshData()
+                                        Task {
+                                            await refreshAllData()
+                                        }
                                     }) {
                                         HStack(spacing: 4) {
                                             Image(systemName: "arrow.clockwise")
@@ -595,15 +716,44 @@ struct DeviceDetailView: View {
                             }
                             
                             // Main data value display
-                            VStack(spacing: 4) {
+                            VStack(spacing: 8) {
                                 Text("Data Value")
                                     .font(.caption)
                                     .foregroundColor(.gray)
                                 
-                                Text(latestDocument.fields.data)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Color("BBMSBlack"))
+                                let parsedData = parseBlockchainData(latestDocument.fields.data)
+                                
+                                if parsedData.temperature != nil || parsedData.battery != nil {
+                                    VStack(spacing: 6) {
+                                        // Temperature display
+                                        if let temperature = parsedData.temperature {
+                                            Text(temperature)
+                                                .font(.title2)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(Color("BBMSBlack"))
+                                        }
+                                        
+                                        // Battery display with icon
+                                        if let battery = parsedData.battery {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "battery.75")
+                                                    .foregroundColor(Color("BBMSGreen"))
+                                                    .font(.title3)
+                                                
+                                                Text(battery)
+                                                    .font(.title2)
+                                                    .fontWeight(.bold)
+                                                    .foregroundColor(Color("BBMSBlack"))
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to original data display
+                                    Text(latestDocument.fields.data)
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color("BBMSBlack"))
+                                }
                             }
                             .padding()
                             .background(Color("BBMSGold").opacity(0.1))
@@ -627,16 +777,24 @@ struct DeviceDetailView: View {
                             Image(systemName: "cube.box")
                                 .foregroundColor(.gray)
                                 .font(.title2)
-                            Text("No blockchain data available")
+                            Text(rubidexService.isLoading ? "Loading blockchain data..." : "No blockchain data available")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                             
-                            Button("Load Data") {
-                                rubidexService.refreshData()
+                            if rubidexService.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
+                                    .padding(.top, 8)
+                            } else {
+                                Button("Load Data") {
+                                    Task {
+                                        await refreshAllData()
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundColor(Color("BBMSBlue"))
+                                .padding(.top, 4)
                             }
-                            .font(.caption)
-                            .foregroundColor(Color("BBMSBlue"))
-                            .padding(.top, 4)
                         }
                         .frame(height: 100)
                         .frame(maxWidth: .infinity)
@@ -646,6 +804,30 @@ struct DeviceDetailView: View {
                 .background(Color("BBMSWhite"))
                 .cornerRadius(16)
                 .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+    }
+    
+    // Pull-to-refresh function
+    @MainActor
+    private func refreshAllData() async {
+        isRefreshing = true
+        lastRefreshTime = Date()
+        
+        // Cache current document to prevent UI wiping
+        if let currentDoc = rubidexService.latestDocument {
+            cachedLatestDocument = currentDoc
+        }
+        
+        print("🔄 Pull-to-refresh triggered")
+        
+        // Perform refresh operations sequentially to avoid actor isolation issues
+        rubidexService.refreshData()
+        
+        // Wait a moment for rubidex data to start loading, then load historical data
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        loadHistoricalData()
+        
+        isRefreshing = false
+        print("✅ Pull-to-refresh completed")
     }
     
     private func checkTemperatureLimit(_ temperature: Double) {

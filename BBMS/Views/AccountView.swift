@@ -2,10 +2,13 @@ import SwiftUI
 
 struct AccountView: View {
     @StateObject private var userService = UserService.shared
+    @StateObject private var authService = AuthService.shared
     @State private var showingEditProfile = false
     @State private var showingSettings = false
     @State private var showingImagePicker = false
     @State private var showingNotifications = false
+    @State private var showingBiometricSettings = false
+    @State private var showingAccessHistory = false
     
     var body: some View {
         NavigationView {
@@ -17,8 +20,14 @@ struct AccountView: View {
                     // Quick Stats
                     quickStats
                     
+                    // Authentication & Security
+                    authenticationSection
+                    
                     // Menu Items
                     menuItems
+                    
+                    // Logout Button
+                    logoutButton
                     
                     Spacer()
                 }
@@ -38,6 +47,12 @@ struct AccountView: View {
             }
             .sheet(isPresented: $showingNotifications) {
                 NotificationSettingsView()
+            }
+            .sheet(isPresented: $showingBiometricSettings) {
+                BiometricSettingsView()
+            }
+            .sheet(isPresented: $showingAccessHistory) {
+                AccessHistoryView()
             }
         }
     }
@@ -160,63 +175,143 @@ struct AccountView: View {
         }
     }
     
-    // MARK: - Menu Items
-    private var menuItems: some View {
-        VStack(spacing: 12) {
-            MenuItemRow(
-                title: "Edit Profile",
-                subtitle: "Update your personal information",
-                icon: "person.crop.circle",
-                color: Color("BBMSGold")
-            ) {
-                showingEditProfile = true
-            }
+    // MARK: - Authentication Section
+    private var authenticationSection: some View {
+        VStack(spacing: 16) {
+            SectionHeaderView(title: "Authentication & Security", icon: "lock.shield")
             
-            MenuItemRow(
-                title: "Settings & Preferences",
-                subtitle: "Customize your app experience",
-                icon: "gearshape",
-                color: .blue
-            ) {
-                showingSettings = true
-            }
-            
-            MenuItemRow(
-                title: "Notifications",
-                subtitle: "Manage notification preferences",
-                icon: "bell",
-                color: .orange
-            ) {
-                showingNotifications = true
-            }
-            
-            MenuItemRow(
-                title: "Security",
-                subtitle: "Password and security settings",
-                icon: "lock.shield",
-                color: .red
-            ) {
-                // Navigate to security settings
-            }
-            
-            MenuItemRow(
-                title: "Help & Support",
-                subtitle: "Get help and contact support",
-                icon: "questionmark.circle",
-                color: .purple
-            ) {
-                // Navigate to help
-            }
-            
-            MenuItemRow(
-                title: "About",
-                subtitle: "App version and information",
-                icon: "info.circle",
-                color: .gray
-            ) {
-                // Navigate to about
+            VStack(spacing: 12) {
+                MenuItemRow(
+                    title: "Biometric Settings",
+                    subtitle: "Manage Face ID and Touch ID",
+                    icon: "faceid",
+                    color: Color("BBMSBlue")
+                ) {
+                    showingBiometricSettings = true
+                }
+                
+                MenuItemRow(
+                    title: "Access History",
+                    subtitle: "View your building access logs",
+                    icon: "clock.arrow.circlepath",
+                    color: .purple
+                ) {
+                    showingAccessHistory = true
+                }
+                
+                MenuItemRow(
+                    title: "Security",
+                    subtitle: "Password and security settings",
+                    icon: "lock.shield",
+                    color: .red
+                ) {
+                    // Navigate to security settings
+                }
             }
         }
+    }
+    
+    // MARK: - Menu Items
+    private var menuItems: some View {
+        VStack(spacing: 16) {
+            SectionHeaderView(title: "Preferences", icon: "gearshape")
+            
+            VStack(spacing: 12) {
+                MenuItemRow(
+                    title: "Edit Profile",
+                    subtitle: "Update your personal information",
+                    icon: "person.crop.circle",
+                    color: Color("BBMSGold")
+                ) {
+                    showingEditProfile = true
+                }
+                
+                MenuItemRow(
+                    title: "Settings & Preferences",
+                    subtitle: "Customize your app experience",
+                    icon: "gearshape",
+                    color: .blue
+                ) {
+                    showingSettings = true
+                }
+                
+                MenuItemRow(
+                    title: "Notifications",
+                    subtitle: "Manage notification preferences",
+                    icon: "bell",
+                    color: .orange
+                ) {
+                    showingNotifications = true
+                }
+                
+                MenuItemRow(
+                    title: "Help & Support",
+                    subtitle: "Get help and contact support",
+                    icon: "questionmark.circle",
+                    color: .purple
+                ) {
+                    // Navigate to help
+                }
+                
+                MenuItemRow(
+                    title: "About",
+                    subtitle: "App version and information",
+                    icon: "info.circle",
+                    color: .gray
+                ) {
+                    // Navigate to about
+                }
+            }
+        }
+    }
+    
+    // MARK: - Logout Button
+    private var logoutButton: some View {
+        Button(action: {
+            Task {
+                await authService.logout()
+            }
+        }) {
+            HStack {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.system(size: 16, weight: .medium))
+                Text("Sign Out")
+                    .font(.system(size: 16, weight: .medium))
+                Spacer()
+            }
+            .foregroundColor(.red)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.red.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.red.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .disabled(authService.isLoading)
+    }
+}
+
+// MARK: - Section Header View
+struct SectionHeaderView: View {
+    let title: String
+    let icon: String
+    
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.secondary)
+            
+            Text(title)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 4)
     }
 }
 

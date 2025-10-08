@@ -2,6 +2,27 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
+    @StateObject private var authService = AuthService.shared
+    
+    var body: some View {
+        Group {
+            if authService.isAuthenticated {
+                AuthenticatedView()
+                    .environmentObject(authService)
+            } else {
+                LoginView()
+                    .environmentObject(authService)
+            }
+        }
+        .onAppear {
+            authService.checkAuthenticationStatus()
+        }
+    }
+}
+
+struct AuthenticatedView: View {
+    @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
+    @EnvironmentObject var authService: AuthService
     
     var body: some View {
         NavigationView {
@@ -42,7 +63,10 @@ struct ContentView: View {
                 )
             )
         }
-        .navigationViewStyle(StackNavigationViewStyle()) // Ensures consistent navigation behavior
+        .task {
+            // Refresh user profile when authenticated view appears
+            await authService.getCurrentProfile()
+        }
     }
 }
 

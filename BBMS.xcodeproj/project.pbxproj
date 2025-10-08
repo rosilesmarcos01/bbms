@@ -29,6 +29,11 @@
 		A51AA68B2E90353F00F8669E /* GlobalTemperatureMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */; };
 		A51AA68D2E9066F500F8669E /* TemperatureMonitoringStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */; };
 		A51AA68F2E91CF0A00F8669E /* AlertsSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68E2E91CF0A00F8669E /* AlertsSheetView.swift */; };
+		A55BD9E22E959AAD00033499 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E02E959AAD00033499 /* AuthService.swift */; };
+		A55BD9E32E959AAD00033499 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E12E959AAD00033499 /* KeychainService.swift */; };
+		A55BD9E72E959AC300033499 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E62E959AC300033499 /* LoginView.swift */; };
+		A55BD9E82E959AC300033499 /* AccessHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E42E959AC300033499 /* AccessHistoryView.swift */; };
+		A55BD9E92E959AC300033499 /* BiometricSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */; };
 		A59BFFE32E8B77E70030803A /* ModernSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE22E8B77E70030803A /* ModernSplashView.swift */; };
 		A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE12E8B77E70030803A /* ModernLogoView.swift */; };
 		A59BFFE92E8B86520030803A /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE82E8B86520030803A /* AlertService.swift */; };
@@ -68,6 +73,11 @@
 		A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalTemperatureMonitor.swift; sourceTree = "<group>"; };
 		A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureMonitoringStatusView.swift; sourceTree = "<group>"; };
 		A51AA68E2E91CF0A00F8669E /* AlertsSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsSheetView.swift; sourceTree = "<group>"; };
+		A55BD9E02E959AAD00033499 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		A55BD9E12E959AAD00033499 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		A55BD9E42E959AC300033499 /* AccessHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessHistoryView.swift; sourceTree = "<group>"; };
+		A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricSettingsView.swift; sourceTree = "<group>"; };
+		A55BD9E62E959AC300033499 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		A59BFFE12E8B77E70030803A /* ModernLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLogoView.swift; sourceTree = "<group>"; };
 		A59BFFE22E8B77E70030803A /* ModernSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernSplashView.swift; sourceTree = "<group>"; };
 		A59BFFE82E8B86520030803A /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
@@ -136,6 +146,9 @@
 		3A001E0C2C9F2EE800000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9E42E959AC300033499 /* AccessHistoryView.swift */,
+				A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */,
+				A55BD9E62E959AC300033499 /* LoginView.swift */,
 				A51AA68E2E91CF0A00F8669E /* AlertsSheetView.swift */,
 				A51AA68C2E9066F500F8669E /* TemperatureMonitoringStatusView.swift */,
 				A51AA6842E902EE300F8669E /* NotificationTestView.swift */,
@@ -174,6 +187,8 @@
 		3A001E1C2C9F2FB400000001 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9E02E959AAD00033499 /* AuthService.swift */,
+				A55BD9E12E959AAD00033499 /* KeychainService.swift */,
 				A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */,
 				A51AA6862E902F0E00F8669E /* BackgroundMonitoringService.swift */,
 				A51AA6872E902F0E00F8669E /* NotificationService.swift */,
@@ -266,6 +281,11 @@
 			files = (
 				3A001E0F2C9F2EFC00000001 /* Device.swift in Sources */,
 				A51AA67F2E8DBF6700F8669E /* RubidexDocument.swift in Sources */,
+				A55BD9E22E959AAD00033499 /* AuthService.swift in Sources */,
+				A55BD9E72E959AC300033499 /* LoginView.swift in Sources */,
+				A55BD9E82E959AC300033499 /* AccessHistoryView.swift in Sources */,
+				A55BD9E92E959AC300033499 /* BiometricSettingsView.swift in Sources */,
+				A55BD9E32E959AAD00033499 /* KeychainService.swift in Sources */,
 				A51AA6832E8DC10700F8669E /* APITestView.swift in Sources */,
 				3A001E132C9F2F1800000001 /* DashboardView.swift in Sources */,
 				A59BFFE92E8B86520030803A /* AlertService.swift in Sources */,

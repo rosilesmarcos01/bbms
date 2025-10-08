@@ -7,6 +7,7 @@ struct BBMSApp: App {
     @StateObject private var notificationService = NotificationService.shared
     @StateObject private var backgroundMonitoring = BackgroundMonitoringService.shared
     @StateObject private var globalMonitor = GlobalTemperatureMonitor.shared
+    @StateObject private var authService = AuthService.shared
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
@@ -18,6 +19,7 @@ struct BBMSApp: App {
                 } else {
                     ContentView()
                         .transition(.opacity)
+                        .environmentObject(authService)
                 }
             }
             .animation(.easeInOut(duration: 0.5), value: showSplash)

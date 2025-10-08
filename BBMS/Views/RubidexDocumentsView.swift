@@ -3,6 +3,26 @@ import SwiftUI
 struct RubidexDocumentsView: View {
     @ObservedObject private var rubidexService = RubidexService.shared
     @State private var showingAllDocuments = false
+    @State private var isRefreshing = false
+    @State private var lastRefreshTime = Date()
+    
+    // Pull-to-refresh function
+    @MainActor
+    private func refreshAllData() async {
+        isRefreshing = true
+        lastRefreshTime = Date()
+        
+        print("🔄 Pull-to-refresh triggered in RubidexDocumentsView")
+        
+        // Refresh Rubidex data
+        rubidexService.refreshData()
+        
+        // Add a small delay to ensure the refresh completes
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        isRefreshing = false
+        print("✅ Pull-to-refresh completed in RubidexDocumentsView")
+    }
     
     var body: some View {
         NavigationView {
@@ -19,10 +39,19 @@ struct RubidexDocumentsView: View {
                             .fontWeight(.bold)
                             .foregroundColor(Color("BBMSBlack"))
                         
+                        // Subtle loading indicator during refresh
+                        if rubidexService.isLoading || isRefreshing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color("BBMSGold")))
+                                .scaleEffect(0.6)
+                        }
+                        
                         Spacer()
                         
                         Button(action: {
-                            rubidexService.refreshData()
+                            Task {
+                                await refreshAllData()
+                            }
                         }) {
                             Image(systemName: "arrow.clockwise")
                                 .foregroundColor(Color("BBMSBlue"))
@@ -52,6 +81,13 @@ struct RubidexDocumentsView: View {
                         Text("Blockchain Verified")
                             .font(.caption)
                             .foregroundColor(Color("BBMSGreen"))
+                        
+                        // Show last refresh time if recently refreshed
+                        if Date().timeIntervalSince(lastRefreshTime) < 10 {
+                            Text("• Updated")
+                                .font(.caption2)
+                                .foregroundColor(Color("BBMSGold"))
+                        }
                         
                         Spacer()
                     }
@@ -156,6 +192,9 @@ struct RubidexDocumentsView: View {
                         }
                         .padding()
                     }
+                    .refreshable {
+                        await refreshAllData()
+                    }
                 }
                 
                 Spacer()
@@ -178,18 +217,163 @@ struct RubidexDocumentsView: View {
 struct DocumentDetailView: View {
     let document: RubidexDocument
     
+    // Parse blockchain data to extract temperature and battery values
+    private func parseBlockchainData(_ data: String) -> (temperature: String?, battery: String?) {
+        // Try to parse JSON format first
+        if let jsonData = data.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            
+            var temperature: String?
+            var battery: String?
+            
+            // Extract temperature
+            if let temp = json["temp"] as? String {
+                let tempInfo = parseTemperatureString(temp)
+                if !tempInfo.unit.isEmpty {
+                    temperature = "\(tempInfo.value) ºC"
+                }
+            } else if let temp = json["temperature"] as? String {
+                let tempInfo = parseTemperatureString(temp)
+                if !tempInfo.unit.isEmpty {
+                    temperature = "\(tempInfo.value) ºC"
+                }
+            } else if let temp = json["temp"] as? Double {
+                temperature = "\(String(format: "%.1f", temp)) ºC"
+            } else if let temp = json["temperature"] as? Double {
+                temperature = "\(String(format: "%.1f", temp)) ºC"
+            }
+            
+            // Extract battery
+            if let batt = json["battery"] as? String {
+                if let battValue = Double(batt.replacingOccurrences(of: "V", with: "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    battery = "\(String(format: "%.1f", battValue)) V"
+                } else {
+                    battery = batt.contains("V") ? batt : "\(batt) V"
+                }
+            } else if let batt = json["battery"] as? Double {
+                battery = "\(String(format: "%.1f", batt)) V"
+            } else if let batt = json["volt"] as? String {
+                if let battValue = Double(batt.replacingOccurrences(of: "V", with: "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    battery = "\(String(format: "%.1f", battValue)) V"
+                } else {
+                    battery = batt.contains("V") ? batt : "\(batt) V"
+                }
+            } else if let batt = json["volt"] as? Double {
+                battery = "\(String(format: "%.1f", batt)) V"
+            }
+            
+            return (temperature: temperature, battery: battery)
+        }
+        
+        // Try to parse non-JSON formats
+        var temperature: String?
+        var battery: String?
+        
+        // Look for temperature patterns
+        let tempPatterns = [
+            #"([0-9]+\.?[0-9]*)\s*ºC"#,
+            #"([0-9]+\.?[0-9]*)\s*°C"#,
+            #"([0-9]+\.?[0-9]*)\s*C"#,
+            #"temp[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"temperature[:\s]+([0-9]+\.?[0-9]*)"#
+        ]
+        
+        for pattern in tempPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: data, range: NSRange(data.startIndex..., in: data)),
+               let range = Range(match.range(at: 1), in: data) {
+                let value = String(data[range])
+                temperature = "\(value) ºC"
+                break
+            }
+        }
+        
+        // Look for battery/voltage patterns
+        let battPatterns = [
+            #"([0-9]+\.?[0-9]*)\s*V"#,
+            #"battery[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"volt[:\s]+([0-9]+\.?[0-9]*)"#,
+            #"batt[:\s]+([0-9]+\.?[0-9]*)"#
+        ]
+        
+        for pattern in battPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: data, range: NSRange(data.startIndex..., in: data)),
+               let range = Range(match.range(at: 1), in: data) {
+                let value = String(data[range])
+                battery = "\(value) V"
+                break
+            }
+        }
+        
+        return (temperature: temperature, battery: battery)
+    }
+    
+    private func parseTemperatureString(_ tempString: String) -> (value: String, unit: String) {
+        // Handle various temperature formats
+        let cleanString = tempString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Pattern for number followed by optional space and temperature unit
+        let patterns = [
+            #"([0-9]+\.?[0-9]*)\s*ºC"#,
+            #"([0-9]+\.?[0-9]*)\s*°C"#,
+            #"([0-9]+\.?[0-9]*)\s*C"#
+        ]
+        
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            guard let match = regex.firstMatch(in: cleanString, range: NSRange(cleanString.startIndex..., in: cleanString)) else { continue }
+            guard let range = Range(match.range(at: 1), in: cleanString) else { continue }
+            
+            let value = String(cleanString[range])
+            return (value: value, unit: "°C")
+        }
+        
+        // If no temperature pattern found, return the original data
+        return (value: cleanString, unit: "")
+    }
+    
     var body: some View {
         VStack(spacing: 12) {
-            // Main data value
-            VStack(spacing: 4) {
+            // Main data value with temperature and battery formatting
+            VStack(spacing: 8) {
                 Text("Data Value")
                     .font(.caption)
                     .foregroundColor(.gray)
                 
-                Text(document.fields.data)
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(Color("BBMSBlack"))
+                let parsedData = parseBlockchainData(document.fields.data)
+                
+                if parsedData.temperature != nil || parsedData.battery != nil {
+                    VStack(spacing: 6) {
+                        // Temperature display
+                        if let temperature = parsedData.temperature {
+                            Text(temperature)
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color("BBMSBlack"))
+                        }
+                        
+                        // Battery display with icon
+                        if let battery = parsedData.battery {
+                            HStack(spacing: 6) {
+                                Image(systemName: "battery.75")
+                                    .foregroundColor(Color("BBMSGreen"))
+                                    .font(.title2)
+                                
+                                Text(battery)
+                                    .font(.title)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Color("BBMSBlack"))
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback to original data display
+                    Text(document.fields.data)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundColor(Color("BBMSBlack"))
+                }
             }
             .padding()
             .background(Color("BBMSGold").opacity(0.1))
@@ -236,6 +420,25 @@ struct DocumentRow: View {
 struct AllDocumentsView: View {
     let documents: [RubidexDocument]
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var rubidexService = RubidexService.shared
+    @State private var isRefreshing = false
+    
+    // Pull-to-refresh function
+    @MainActor
+    private func refreshAllData() async {
+        isRefreshing = true
+        
+        print("🔄 Pull-to-refresh triggered in AllDocumentsView")
+        
+        // Refresh Rubidex data
+        rubidexService.refreshData()
+        
+        // Add a small delay to ensure the refresh completes
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        isRefreshing = false
+        print("✅ Pull-to-refresh completed in AllDocumentsView")
+    }
     
     var sortedDocuments: [RubidexDocument] {
         documents.sorted { first, second in
@@ -281,6 +484,9 @@ struct AllDocumentsView: View {
                     }
                 }
                 .padding()
+            }
+            .refreshable {
+                await refreshAllData()
             }
             .background(.gray.opacity(0.05))
             .navigationTitle("All Documents")

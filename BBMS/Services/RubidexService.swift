@@ -5,12 +5,25 @@ class RubidexService: ObservableObject {
     
     // Backend API connection (unified endpoint for all data)
     // Local testing - your Mac's IP address
-    private let backendURL = "http://192.168.100.4:3000/api"
+    private let backendURL = "http://10.10.62.45:3000/api"
+    private let keychain = KeychainService.shared
     
     @Published var documents: [RubidexDocument] = []
     @Published var latestDocument: RubidexDocument?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    
+    // MARK: - Helper Methods
+    private func addAuthHeaders(to request: inout URLRequest) {
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        if let accessToken = keychain.getAccessToken() {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("Added authorization header with token")
+        } else {
+            print("No access token found in keychain")
+        }
+    }
     
     func fetchDocuments() async {
         await MainActor.run {
@@ -33,7 +46,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         
         // Add timeout
         request.timeoutInterval = 30.0
@@ -142,7 +155,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 15.0
         
         do {
@@ -233,7 +246,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 15.0
         
         do {
@@ -277,7 +290,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 30.0
         
         do {
@@ -306,7 +319,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 30.0
         
         do {
@@ -359,7 +372,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 30.0
         
         do {
@@ -422,7 +435,7 @@ class RubidexService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthHeaders(to: &request)
         request.timeoutInterval = 30.0
         
         do {
