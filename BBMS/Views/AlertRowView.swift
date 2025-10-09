@@ -81,10 +81,21 @@ struct AlertRowView: View {
                     }
                 }
                 
-                // Chevron
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                // Chevron or Quick Action Button
+                if !alert.isResolved {
+                    Button(action: {
+                        alertService.markAsResolved(alert)
+                    }) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.title3)
+                            .foregroundColor(.green)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             .padding()
             .background(
@@ -94,6 +105,33 @@ struct AlertRowView: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if !alert.isResolved {
+                Button {
+                    alertService.markAsResolved(alert)
+                } label: {
+                    Label("Resolve", systemImage: "checkmark.circle.fill")
+                }
+                .tint(.green)
+            }
+            
+            if !alert.isRead {
+                Button {
+                    alertService.markAsRead(alert)
+                } label: {
+                    Label("Mark Read", systemImage: "envelope.open.fill")
+                }
+                .tint(.blue)
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                showingDetail = true
+            } label: {
+                Label("Details", systemImage: "info.circle.fill")
+            }
+            .tint(Color("BBMSGold"))
+        }
         .sheet(isPresented: $showingDetail) {
             AlertDetailView(alert: alert, alertService: alertService)
         }

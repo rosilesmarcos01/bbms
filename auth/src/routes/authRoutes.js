@@ -13,7 +13,7 @@ const router = express.Router();
 // Rate limiting for auth endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs for auth endpoints
+  max: 100, // limit each IP to 100 requests per windowMs for auth endpoints (increased from 5)
   message: {
     error: 'Too many authentication attempts, please try again later.',
     code: 'AUTH_RATE_LIMIT_EXCEEDED'
@@ -165,7 +165,7 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
 
     // Get user
     const user = await userService.getUserByEmail(email);
-    if (!user || !user.isActive) {
+    if (!user?.isActive) {
       return res.status(401).json({
         error: 'Invalid credentials',
         code: 'INVALID_CREDENTIALS'
@@ -252,9 +252,24 @@ router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req,
 
     const { verificationData, accessPoint = 'mobile_app' } = req.body;
 
+    // First, try to identify the user by their biometric template
+    let user = null;
+    if (verificationData.biometric_template) {
+      user = await userService.getUserByBiometricTemplate(verificationData.biometric_template);
+    }
+
+    if (!user) {
+      logger.warn('⚠️ Could not identify user from biometric template');
+      return res.status(401).json({
+        error: 'User not found or not enrolled',
+        code: 'USER_NOT_IDENTIFIED'
+      });
+    }
+
     // Verify biometric with AuthID.ai
     const biometricResult = await authIdService.verifyBiometric({
       ...verificationData,
+      userId: user.id, // Now we can pass the user ID
       accessPoint
     });
 
@@ -265,12 +280,11 @@ router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req,
       });
     }
 
-    // Get user from our database
-    const user = await userService.getUserById(biometricResult.userId);
-    if (!user || !user.isActive) {
+    // Double-check user is active
+    if (!user?.isActive) {
       return res.status(401).json({
-        error: 'User not found or inactive',
-        code: 'USER_NOT_FOUND'
+        error: 'User account is inactive',
+        code: 'USER_INACTIVE'
       });
     }
 

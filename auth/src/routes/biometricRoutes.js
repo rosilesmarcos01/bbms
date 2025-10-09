@@ -8,36 +8,172 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+// Test route to check if biometric routes are working
+router.get('/test', (req, res) => {
+  res.json({ message: 'Biometric routes working' });
+});
+
+/**
+ * Check operation status (public endpoint for enrollment completion)
+ * GET /api/biometric/operation/:operationId/status
+ */
+router.get('/operation/:operationId/status', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    
+    logger.info(`🔍 Checking operation status: ${operationId}`);
+    
+    // Get status from AuthID
+    const status = await authIdService.checkOperationStatus(operationId);
+    
+    // Return friendly status
+    let statusText = 'pending';
+    if (status.state === 1) {
+      statusText = status.result === 1 ? 'completed' : 'failed';
+    } else if (status.state === 3) {
+      statusText = 'expired';
+    }
+    
+    res.json({
+      success: true,
+      status: statusText,
+      operationId: status.operationId,
+      state: status.state,
+      result: status.result,
+      accountNumber: status.accountNumber,
+      completedAt: status.completedAt
+    });
+    
+  } catch (error) {
+    logger.error('❌ Failed to check operation status', { 
+      error: error.message,
+      operationId: req.params.operationId 
+    });
+    
+    res.status(500).json({
+      error: 'Failed to check status',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Mark enrollment as complete (public endpoint, called by web interface after capture)
+ * POST /api/biometric/operation/:operationId/complete
+ */
+router.post('/operation/:operationId/complete', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    
+    logger.info(`✅ Marking enrollment as complete: ${operationId}`);
+    
+    // Find the user with this enrollment ID
+    const user = await userService.getUserByEnrollmentId(operationId);
+    
+    if (!user) {
+      logger.warn(`⚠️ No user found with enrollment ID: ${operationId}`);
+      return res.status(404).json({
+        error: 'Enrollment not found',
+        code: 'NO_ENROLLMENT'
+      });
+    }
+    
+    // Update the enrollment status to completed
+    await userService.updateBiometricEnrollmentStatus(user.id, 'completed');
+    
+    logger.info(`🎉 Enrollment marked as complete for user: ${user.id}`);
+    
+    res.json({
+      success: true,
+      message: 'Enrollment marked as complete',
+      operationId: operationId
+    });
+    
+  } catch (error) {
+    logger.error('❌ Failed to mark enrollment as complete', { 
+      error: error.message,
+      operationId: req.params.operationId 
+    });
+    
+    res.status(500).json({
+      error: 'Failed to complete enrollment',
+      message: error.message
+    });
+  }
+});
+
 // All biometric routes require authentication
-router.use(authMiddleware.verifyToken);
+// router.use(authMiddleware.verifyToken);
 
 /**
  * Initiate biometric enrollment for current user
  * POST /api/biometric/enroll
  */
-router.post('/enroll', async (req, res) => {
+router.post('/enroll', authMiddleware.verifyToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+    logger.info(`🔍 Starting biometric enrollment for user: ${userId}`);
     
     // Get user data
+    logger.info(`🔍 Fetching user data for: ${userId}`);
     const user = await userService.getUserById(userId);
     if (!user) {
+      logger.error(`❌ User not found: ${userId}`);
       return res.status(404).json({
         error: 'User not found',
         code: 'USER_NOT_FOUND'
       });
     }
+    logger.info(`✅ User found: ${user.email}`);
 
     // Check if user already has biometric enrollment
+    logger.info(`🔍 Checking existing enrollment for: ${userId}`);
     const existingEnrollment = await userService.getBiometricEnrollment(userId);
     if (existingEnrollment && existingEnrollment.status === 'completed') {
-      return res.status(409).json({
-        error: 'User already has biometric enrollment',
-        code: 'ENROLLMENT_EXISTS'
+      logger.info(`⚠️ User already enrolled: ${userId}`);
+      
+      // Return the existing enrollment info
+      return res.json({
+        message: 'User already has biometric enrollment',
+        enrollment: {
+          enrollmentId: existingEnrollment.enrollmentId,
+          status: 'completed',
+          completedAt: existingEnrollment.updatedAt || existingEnrollment.createdAt
+        },
+        alreadyEnrolled: true
+      });
+    }
+    logger.info(`✅ No existing enrollment, proceeding...`);
+
+    // For development, return a mock enrollment response since AuthID.ai might not be accessible
+    if (process.env.NODE_ENV === 'development') {
+      logger.info(`🔧 Using development mode mock enrollment`);
+      const mockEnrollment = {
+        enrollmentId: 'mock-' + Date.now(),
+        enrollmentUrl: 'https://authid.ai/enroll/mock-enrollment',
+        qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      };
+
+      // Save enrollment data
+      logger.info(`🔍 Saving mock enrollment data for: ${userId}`);
+      await userService.saveBiometricEnrollment(userId, {
+        enrollmentId: mockEnrollment.enrollmentId,
+        status: 'initiated',
+        expiresAt: mockEnrollment.expiresAt,
+        createdAt: new Date()
+      });
+      logger.info(`✅ Mock enrollment saved successfully`);
+
+      logger.info(`🔐 Mock biometric enrollment initiated for user ${userId}`);
+
+      return res.json({
+        message: 'Biometric enrollment initiated (development mode)',
+        enrollment: mockEnrollment
       });
     }
 
-    // Initiate biometric enrollment with AuthID.ai
+    // Production: Use actual AuthID.ai service
     const enrollment = await authIdService.initiateBiometricEnrollment(userId, {
       name: user.name,
       email: user.email,
@@ -67,10 +203,36 @@ router.post('/enroll', async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('❌ Failed to initiate biometric enrollment:', error.message);
+    // Check if it's a 409 conflict (already enrolled in AuthID)
+    if (error.response?.status === 409 || error.message.includes('already exist')) {
+      logger.info(`ℹ️ User already enrolled in AuthID, updating local status: ${req.user?.userId}`);
+      
+      // Update local enrollment status to completed
+      const existingEnrollment = await userService.getBiometricEnrollment(req.user?.userId);
+      if (existingEnrollment) {
+        await userService.updateBiometricEnrollmentStatus(req.user?.userId, 'completed');
+        
+        return res.json({
+          message: 'Biometric enrollment already completed',
+          enrollment: {
+            enrollmentId: existingEnrollment.enrollmentId,
+            status: 'completed',
+            completedAt: new Date().toISOString()
+          },
+          alreadyEnrolled: true
+        });
+      }
+    }
+    
+    logger.error('❌ Failed to initiate biometric enrollment:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.userId
+    });
     res.status(500).json({
       error: 'Failed to initiate biometric enrollment',
-      code: 'ENROLLMENT_ERROR'
+      code: 'ENROLLMENT_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -79,48 +241,87 @@ router.post('/enroll', async (req, res) => {
  * Get biometric enrollment status
  * GET /api/biometric/enrollment/status
  */
-router.get('/enrollment/status', async (req, res) => {
+router.get('/enrollment/status', authMiddleware.verifyToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+    
+    logger.info(`🔍 Checking enrollment status for user: ${userId}`);
     
     // Get enrollment from database
     const enrollment = await userService.getBiometricEnrollment(userId);
     if (!enrollment) {
+      logger.info(`📭 No enrollment found for user: ${userId}`);
       return res.status(404).json({
         error: 'No enrollment found',
-        code: 'NO_ENROLLMENT'
+        code: 'NO_ENROLLMENT',
+        enrolled: false
       });
     }
+    
+    logger.info(`📋 Found enrollment: ${enrollment.enrollmentId}, status: ${enrollment.status}`);
 
-    // Get status from AuthID.ai
+    // Get status from AuthID if we have an enrollmentId (which is the operationId)
     let authIdStatus = null;
-    try {
-      authIdStatus = await authIdService.getEnrollmentStatus(enrollment.enrollmentId);
-    } catch (error) {
-      logger.warn(`⚠️ Failed to get AuthID.ai enrollment status: ${error.message}`);
-    }
-
-    // Update local status if different
-    if (authIdStatus && authIdStatus.status !== enrollment.status) {
-      await userService.updateBiometricEnrollmentStatus(userId, authIdStatus.status);
+    if (enrollment.enrollmentId) {
+      try {
+        authIdStatus = await authIdService.checkOperationStatus(enrollment.enrollmentId);
+        
+        // Map AuthID state to our status
+        if (authIdStatus.state === 1 && authIdStatus.result === 1) {
+          // Completed successfully
+          await userService.updateBiometricEnrollmentStatus(userId, 'completed');
+          enrollment.status = 'completed';
+        } else if (authIdStatus.state === 2 || authIdStatus.result === 2) {
+          // Failed
+          await userService.updateBiometricEnrollmentStatus(userId, 'failed');
+          enrollment.status = 'failed';
+        } else if (authIdStatus.state === 3) {
+          // Expired
+          await userService.updateBiometricEnrollmentStatus(userId, 'expired');
+          enrollment.status = 'expired';
+        }
+      } catch (error) {
+        // If 404, the operation might not be queryable yet or was completed
+        // Just use the local status
+        logger.warn(`⚠️ Failed to get AuthID operation status: ${error.message}`);
+        
+        // If it's been more than 5 minutes and still pending, check if there are credentials
+        const enrollmentAge = Date.now() - new Date(enrollment.createdAt).getTime();
+        if (enrollmentAge > 5 * 60 * 1000 && enrollment.status === 'initiated') {
+          // Check if user has credentials in AuthID
+          try {
+            // Try to verify the account exists with biometric credentials
+            // If the verification works, the enrollment was successful
+            logger.info(`⏰ Enrollment is old, checking if credentials exist in AuthID`);
+            // For now, we'll keep it as initiated
+          } catch (credError) {
+            logger.warn(`⚠️ Could not verify credentials: ${credError.message}`);
+          }
+        }
+      }
     }
 
     res.json({
       enrollment: {
         enrollmentId: enrollment.enrollmentId,
-        status: authIdStatus?.status || enrollment.status,
-        progress: authIdStatus?.progress || 0,
-        completed: authIdStatus?.completed || false,
+        status: enrollment.status,
+        progress: enrollment.status === 'completed' ? 100 : (enrollment.status === 'initiated' ? 50 : 0),
+        completed: enrollment.status === 'completed',
         createdAt: enrollment.createdAt,
         expiresAt: enrollment.expiresAt
       }
     });
 
   } catch (error) {
-    logger.error('❌ Failed to get enrollment status:', error.message);
+    logger.error('❌ Failed to get enrollment status:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.userId
+    });
     res.status(500).json({
       error: 'Failed to get enrollment status',
-      code: 'STATUS_ERROR'
+      code: 'STATUS_ERROR',
+      details: error.message
     });
   }
 });

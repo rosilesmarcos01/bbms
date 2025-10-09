@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 require('dotenv').config();
 
 const logger = require('./utils/logger');
@@ -20,7 +21,7 @@ const PORT = process.env.PORT || 3001;
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 50000, // limit each IP to 50k requests per windowMs (increased from 10k)
   message: {
     error: 'Too many requests from this IP, please try again later.',
     code: 'RATE_LIMIT_EXCEEDED'
@@ -33,8 +34,10 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
       imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://id-uat.authid.ai", "https://id.authid.ai"],
+      frameSrc: ["'self'"],
     },
   },
   hsts: {
@@ -59,6 +62,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+// Serve static files for AuthID enrollment page
+app.use('/enroll', express.static(path.join(__dirname, '../public')));
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
@@ -72,9 +78,13 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+console.log('🔧 Mounting auth routes...');
 app.use('/api/auth', authRoutes);
+console.log('🔧 Mounting biometric routes...');
 app.use('/api/biometric', biometricRoutes);
+console.log('🔧 Mounting user routes...');
 app.use('/api/users', authMiddleware.verifyToken, userRoutes);
+console.log('🔧 Mounting building access routes...');
 app.use('/api/building-access', authMiddleware.verifyToken, buildingAccessRoutes);
 
 // AuthID.ai webhook endpoint (no auth required)
@@ -103,11 +113,44 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Start server
-app.listen(PORT, () => {
+// Try to load SSL certificates for HTTPS
+const https = require('https');
+const http = require('http');
+const fs = require('fs');
+
+let useHttps = false;
+let httpsOptions = {};
+
+try {
+  const keyPath = path.join(__dirname, '../localhost-key.pem');
+  const certPath = path.join(__dirname, '../localhost-cert.pem');
+  
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    };
+    useHttps = true;
+    logger.info('✅ SSL certificates found - HTTPS enabled');
+  }
+} catch (error) {
+  logger.info('⚠️  No SSL certificates - using HTTP');
+}
+
+// Start server (HTTPS if certificates available, HTTP otherwise)
+const server = useHttps ? https.createServer(httpsOptions, app) : http.createServer(app);
+
+server.listen(PORT, '0.0.0.0', () => {
+  const hostIp = process.env.HOST_IP || 'localhost';
+  const protocol = useHttps ? 'https' : 'http';
   logger.info(`🔐 BBMS Auth Service running on port ${PORT}`);
+  logger.info(`🌐 Local: ${protocol}://localhost:${PORT}`);
+  logger.info(`🌐 Network: ${protocol}://${hostIp}:${PORT}`);
   logger.info(`🏢 Building: ${process.env.FACILITY_NAME || 'Main Building Facility'}`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  if (useHttps) {
+    logger.info('🔒 HTTPS enabled (Self-signed certificate)');
+  }
 });
 
 module.exports = app;

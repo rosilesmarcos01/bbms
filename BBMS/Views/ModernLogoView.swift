@@ -27,25 +27,12 @@ struct ModernLogoView: View {
     }
     
     private var iconOnly: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color("BBMSGold"),
-                            Color("BBMSGold").opacity(0.7)
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-                .shadow(color: Color("BBMSGold").opacity(0.3), radius: 8, x: 0, y: 4)
-            
-            Image(systemName: "building.2.crop.circle")
-                .font(.system(size: size * 0.5, weight: .semibold))
-                .foregroundColor(.white)
-        }
+        Image("RubitestLogo")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .colorMultiply(Color.primary)
+            .shadow(color: Color("BBMSGold").opacity(0.3), radius: 8, x: 0, y: 4)
     }
     
     private var fullLogo: some View {
@@ -70,7 +57,7 @@ struct ModernLogoView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(height: size * 0.15)
-                    .colorMultiply(.black)
+                    .colorMultiply(Color.primary)
                 
                 Text("by Rubitest")
                     .font(.system(size: size * 0.12, weight: .medium))
@@ -82,24 +69,11 @@ struct ModernLogoView: View {
     
     private var compactLogo: some View {
         HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: size * 0.2)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color("BBMSGold"),
-                                Color("BBMSGold").opacity(0.8)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: size, height: size)
-                
-                Image(systemName: "building.2.crop.circle")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundColor(.white)
-            }
+            Image("RubitestLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .colorMultiply(Color.primary)
             
             Text("BBMS")
                 .font(.system(size: size * 0.6, weight: .bold, design: .rounded))

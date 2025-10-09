@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct AuthID Component Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+        #debug {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow: auto;
+            z-index: 10000;
+            font-size: 12px;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug">
+        <h3>Debug Info</h3>
+        <pre id="log"></pre>
+    </div>
+
+    <!-- Load the AuthID web component directly -->
+    <script src="/node_modules/@authid/web-component/authid-web-component.js"></script>
+    
+    <script>
+        const log = document.getElementById('log');
+        function addLog(msg) {
+            log.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        addLog('✅ Script loaded');
+        addLog('customElements.get: ' + customElements.get('authid-component'));
+        
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const operationId = urlParams.get('operationId') || 'test123';
+        const secret = urlParams.get('secret') || 'test456';
+        const baseUrl = urlParams.get('baseUrl') || 'https://id-uat.authid.ai';
+        
+        const operationURL = `${baseUrl}/IDCompleteBackendEngine/Default/AuthorizationServiceRest/v2/operations/${operationId}?secret=${secret}`;
+        
+        addLog('\nOperation URL: ' + operationURL);
+        
+        // Create the custom element
+        addLog('\n📦 Creating authid-component...');
+        const authidElement = document.createElement('authid-component');
+        authidElement.setAttribute('data-url', operationURL);
+        authidElement.setAttribute('data-target', 'auto');
+        authidElement.setAttribute('data-webauth', 'true');
+        authidElement.setAttribute('data-control', 'true');
+        
+        addLog('Element created: ' + authidElement.tagName);
+        addLog('data-url: ' + authidElement.getAttribute('data-url'));
+        
+        // Listen for load event
+        authidElement.addEventListener('load', () => {
+            addLog('🎬 Component loaded!');
+        });
+        
+        // Append to body
+        document.body.appendChild(authidElement);
+        addLog('✅ Component appended to body');
+        
+        // Check if it's actually in the DOM
+        setTimeout(() => {
+            const found = document.querySelector('authid-component');
+            addLog('\nComponent in DOM: ' + (found ? 'YES' : 'NO'));
+            if (found) {
+                addLog('Shadow root: ' + (found.shadowRoot ? 'YES (closed)' : 'accessible'));
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -31,9 +31,15 @@
 		A51AA68F2E91CF0A00F8669E /* AlertsSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51AA68E2E91CF0A00F8669E /* AlertsSheetView.swift */; };
 		A55BD9E22E959AAD00033499 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E02E959AAD00033499 /* AuthService.swift */; };
 		A55BD9E32E959AAD00033499 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E12E959AAD00033499 /* KeychainService.swift */; };
+		A55BD9E3A2E9FF00000033499 /* NetworkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E3B2E9FF00000033499 /* NetworkService.swift */; };
 		A55BD9E72E959AC300033499 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E62E959AC300033499 /* LoginView.swift */; };
 		A55BD9E82E959AC300033499 /* AccessHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E42E959AC300033499 /* AccessHistoryView.swift */; };
 		A55BD9E92E959AC300033499 /* BiometricSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */; };
+		A55BD9EB2E95F21F00033499 /* DeviceDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EA2E95F21F00033499 /* DeviceDataService.swift */; };
+		A55BD9ED2E96E6AA00033499 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EC2E96E6AA00033499 /* BiometricAuthService.swift */; };
+		A55BD9F02E96E95B00033499 /* BiometricEnrollmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */; };
+		A55BD9F12E96E95B00033499 /* BiometricComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */; };
+		A55BD9F42E973F1B00033499 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9F22E973F1B00033499 /* AppConfig.swift */; };
 		A59BFFE32E8B77E70030803A /* ModernSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE22E8B77E70030803A /* ModernSplashView.swift */; };
 		A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE12E8B77E70030803A /* ModernLogoView.swift */; };
 		A59BFFE92E8B86520030803A /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE82E8B86520030803A /* AlertService.swift */; };
@@ -75,9 +81,15 @@
 		A51AA68E2E91CF0A00F8669E /* AlertsSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsSheetView.swift; sourceTree = "<group>"; };
 		A55BD9E02E959AAD00033499 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		A55BD9E12E959AAD00033499 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		A55BD9E3B2E9FF00000033499 /* NetworkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkService.swift; sourceTree = "<group>"; };
 		A55BD9E42E959AC300033499 /* AccessHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessHistoryView.swift; sourceTree = "<group>"; };
 		A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricSettingsView.swift; sourceTree = "<group>"; };
 		A55BD9E62E959AC300033499 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		A55BD9EA2E95F21F00033499 /* DeviceDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceDataService.swift; sourceTree = "<group>"; };
+		A55BD9EC2E96E6AA00033499 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
+		A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricComponents.swift; sourceTree = "<group>"; };
+		A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricEnrollmentView.swift; sourceTree = "<group>"; };
+		A55BD9F22E973F1B00033499 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		A59BFFE12E8B77E70030803A /* ModernLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLogoView.swift; sourceTree = "<group>"; };
 		A59BFFE22E8B77E70030803A /* ModernSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernSplashView.swift; sourceTree = "<group>"; };
 		A59BFFE82E8B86520030803A /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
@@ -124,6 +136,7 @@
 		3A001DFE2C9F2E5600000001 /* BBMS */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9F32E973F1B00033499 /* Config */,
 				3A001E1C2C9F2FB400000001 /* Services */,
 				3A001E0D2C9F2EF000000001 /* Models */,
 				3A001E0C2C9F2EE800000001 /* Views */,
@@ -146,6 +159,8 @@
 		3A001E0C2C9F2EE800000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */,
+				A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */,
 				A55BD9E42E959AC300033499 /* AccessHistoryView.swift */,
 				A55BD9E52E959AC300033499 /* BiometricSettingsView.swift */,
 				A55BD9E62E959AC300033499 /* LoginView.swift */,
@@ -187,8 +202,11 @@
 		3A001E1C2C9F2FB400000001 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9EC2E96E6AA00033499 /* BiometricAuthService.swift */,
+				A55BD9EA2E95F21F00033499 /* DeviceDataService.swift */,
 				A55BD9E02E959AAD00033499 /* AuthService.swift */,
 				A55BD9E12E959AAD00033499 /* KeychainService.swift */,
+				A55BD9E3B2E9FF00000033499 /* NetworkService.swift */,
 				A51AA68A2E90353F00F8669E /* GlobalTemperatureMonitor.swift */,
 				A51AA6862E902F0E00F8669E /* BackgroundMonitoringService.swift */,
 				A51AA6872E902F0E00F8669E /* NotificationService.swift */,
@@ -199,6 +217,14 @@
 				3A001E1A2C9F2F9D00000001 /* ZoneService.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		A55BD9F32E973F1B00033499 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A55BD9F22E973F1B00033499 /* AppConfig.swift */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		A59BFFFF2E8C64200030803A /* Extensions */ = {
@@ -283,9 +309,11 @@
 				A51AA67F2E8DBF6700F8669E /* RubidexDocument.swift in Sources */,
 				A55BD9E22E959AAD00033499 /* AuthService.swift in Sources */,
 				A55BD9E72E959AC300033499 /* LoginView.swift in Sources */,
+				A55BD9F42E973F1B00033499 /* AppConfig.swift in Sources */,
 				A55BD9E82E959AC300033499 /* AccessHistoryView.swift in Sources */,
 				A55BD9E92E959AC300033499 /* BiometricSettingsView.swift in Sources */,
 				A55BD9E32E959AAD00033499 /* KeychainService.swift in Sources */,
+				A55BD9E3A2E9FF00000033499 /* NetworkService.swift in Sources */,
 				A51AA6832E8DC10700F8669E /* APITestView.swift in Sources */,
 				3A001E132C9F2F1800000001 /* DashboardView.swift in Sources */,
 				A59BFFE92E8B86520030803A /* AlertService.swift in Sources */,
@@ -293,6 +321,8 @@
 				A51AA6882E902F0E00F8669E /* BackgroundMonitoringService.swift in Sources */,
 				A51AA6892E902F0E00F8669E /* NotificationService.swift in Sources */,
 				3A001E172C9F2F3300000001 /* ZoneReservationView.swift in Sources */,
+				A55BD9F02E96E95B00033499 /* BiometricEnrollmentView.swift in Sources */,
+				A55BD9F12E96E95B00033499 /* BiometricComponents.swift in Sources */,
 				A51AA67D2E8DBF5A00F8669E /* RubidexDocumentsView.swift in Sources */,
 				3A001E152C9F2F2500000001 /* DeviceMonitoringView.swift in Sources */,
 				A51AA68F2E91CF0A00F8669E /* AlertsSheetView.swift in Sources */,
@@ -303,11 +333,13 @@
 				A59BFFEF2E8B86730030803A /* AlertsView.swift in Sources */,
 				A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */,
 				A51AA6852E902EE300F8669E /* NotificationTestView.swift in Sources */,
+				A55BD9EB2E95F21F00033499 /* DeviceDataService.swift in Sources */,
 				A51AA68B2E90353F00F8669E /* GlobalTemperatureMonitor.swift in Sources */,
 				A51AA68D2E9066F500F8669E /* TemperatureMonitoringStatusView.swift in Sources */,
 				3A001E1B2C9F2F9D00000001 /* ZoneService.swift in Sources */,
 				3A001E192C9F2F9000000001 /* DeviceService.swift in Sources */,
 				3A001E1F2C9F3F3400000001 /* DeviceDetailView.swift in Sources */,
+				A55BD9ED2E96E6AA00033499 /* BiometricAuthService.swift in Sources */,
 				A51AA6812E8DBF7400F8669E /* RubidexService.swift in Sources */,
 				3A001E002C9F2E5600000001 /* BBMSApp.swift in Sources */,
 				A59BFFF52E8C36C90030803A /* ProfileImagePicker.swift in Sources */,

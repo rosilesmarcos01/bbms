@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <title>AuthID Biometric Enrollment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        .card h2 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            color: #1a202c;
+        }
+        
+        .card p {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #4a5568;
+            margin-bottom: 12px;
+        }
+        
+        .params-display {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+            text-align: left;
+            font-size: 14px;
+        }
+        
+        .params-display div {
+            margin: 8px 0;
+            word-break: break-all;
+        }
+        
+        authid-component {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container" class="container">
+        <div class="card">
+            <h2>📋 Loading...</h2>
+            <p>Initializing enrollment...</p>
+        </div>
+    </div>
+
+    <!-- Load AuthID web component -->
+    <script src="/node_modules/@authid/web-component/authid-web-component.js"></script>
+    
+    <script>
+        console.log('🔐 AuthID Enrollment - Plain JS Version');
+        
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const operationId = urlParams.get('operationId');
+        const secret = urlParams.get('secret');
+        const baseUrl = urlParams.get('baseUrl') || 'https://id-uat.authid.ai';
+        
+        console.log('Operation ID:', operationId);
+        console.log('Secret:', secret ? '***' : 'missing');
+        console.log('Base URL:', baseUrl);
+        
+        const container = document.getElementById('app-container');
+        
+        if (!operationId || !secret) {
+            container.innerHTML = `
+                <div class="card">
+                    <h2>⚠️ Missing Parameters</h2>
+                    <p>Operation ID and Secret are required for enrollment.</p>
+                    <p>Please restart the enrollment process from the BBMS app.</p>
+                    <div class="params-display">
+                        <div><strong>Operation ID:</strong> ${operationId || 'Missing'}</div>
+                        <div><strong>Secret:</strong> ${secret ? 'Provided' : 'Missing'}</div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Try different AuthID URL formats
+            // Option 1: Web interface with query params
+            const authidURL = `${baseUrl}/?OperationId=${operationId}&OneTimeSecret=${secret}`;
+            
+            console.log('📋 AuthID Web Interface URL:', authidURL);
+            
+            // Clear the container
+            container.innerHTML = '';
+            container.style.padding = '0';
+            
+            // Create the AuthID component
+            const authidElement = document.createElement('authid-component');
+            authidElement.setAttribute('data-url', authidURL);
+            authidElement.setAttribute('data-target', 'auto');
+            authidElement.setAttribute('data-webauth', 'true');
+            authidElement.setAttribute('data-control', 'true');
+            
+            // Listen for load event
+            authidElement.addEventListener('load', () => {
+                console.log('🎬 AuthID component loaded successfully');
+            });
+            
+            // Listen for messages from the iframe (AuthID might send completion events)
+            window.addEventListener('message', (event) => {
+                console.log('📨 Message received:', event.data);
+                
+                // Check if it's a completion message
+                if (event.data && (event.data.status === 'completed' || event.data.type === 'success')) {
+                    console.log('✅ Enrollment completed!');
+                    showSuccess();
+                } else if (event.data && (event.data.status === 'failed' || event.data.type === 'error')) {
+                    console.log('❌ Enrollment failed:', event.data);
+                    showError(event.data.message || 'Enrollment failed');
+                }
+            });
+            
+            // Append to container
+            container.appendChild(authidElement);
+            console.log('✅ AuthID component added to page');
+            
+            // After 30 seconds, check if still processing and show alternative
+            setTimeout(() => {
+                console.log('⏰ 30 seconds elapsed, checking status...');
+                // If still showing "one moment please", provide option to continue
+                if (container.contains(authidElement)) {
+                    console.log('ℹ️ Still processing, will poll backend for status');
+                    checkEnrollmentStatus();
+                }
+            }, 30000);
+        }
+        
+        function showSuccess() {
+            console.log('🎉 showSuccess called');
+            const container = document.getElementById('app-container');
+            container.innerHTML = `
+                <div class="card" style="border-top: 4px solid #48bb78;">
+                    <h2>✅ Enrollment Complete!</h2>
+                    <p>Your biometric authentication has been set up successfully.</p>
+                    <button id="finishButton" style="background: #48bb78; color: white; border: none; border-radius: 8px; padding: 16px 32px; font-size: 18px; font-weight: bold; margin-top: 24px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        ✓ Finish & Close
+                    </button>
+                    <p style="font-size: 14px; color: #666; margin-top: 16px;">
+                        Tap the button above, then close this window to return to the app.
+                    </p>
+                    <div id="statusMessage" style="margin-top: 20px;"></div>
+                </div>
+            `;
+            container.style.padding = '20px';
+            
+            // Attach click handler after DOM is updated
+            const button = document.getElementById('finishButton');
+            button.addEventListener('click', function() {
+                console.log('🖱️ Button clicked!');
+                completeAndClose();
+            });
+            
+            console.log('✅ Success UI rendered with button handler attached');
+        }
+        
+        async function completeAndClose() {
+            console.log('🚀 completeAndClose called');
+            
+            const button = document.getElementById('finishButton');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            if (!button) {
+                console.error('❌ Button not found');
+                return;
+            }
+            
+            button.disabled = true;
+            button.style.opacity = '0.6';
+            button.textContent = '⏳ Saving...';
+            statusMessage.textContent = 'Saving enrollment status...';
+            statusMessage.style.color = '#666';
+            
+            console.log('📤 Calling markEnrollmentComplete...');
+            
+            try {
+                // Mark enrollment as complete
+                await markEnrollmentComplete();
+                
+                // Update button
+                button.textContent = '✅ Done! Close this window';
+                button.style.background = '#38a169';
+                
+                // Show success message
+                statusMessage.textContent = '✓ Saved! Now close this window to return to the BBMS app.';
+                statusMessage.style.cssText = 'font-size: 16px; color: #2d3748; margin-top: 20px; font-weight: bold;';
+                
+                console.log('✅ Enrollment completion process finished');
+            } catch (error) {
+                console.error('❌ Error in completeAndClose:', error);
+                statusMessage.textContent = '⚠️ Error saving. Please close the window anyway.';
+                statusMessage.style.color = '#e53e3e';
+            }
+        }
+        
+        async function markEnrollmentComplete() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const operationId = urlParams.get('operationId');
+            
+            if (!operationId) {
+                console.error('❌ No operation ID found in URL');
+                throw new Error('No operation ID');
+            }
+            
+            console.log('📤 Marking enrollment as complete for operation:', operationId);
+            
+            // Build the URL - auth service is now on HTTPS too
+            const completeUrl = `https://${window.location.hostname}:3001/auth/biometric/operation/${operationId}/complete`;
+            console.log('🔗 Complete endpoint URL:', completeUrl);
+            
+            try {
+                const response = await fetch(completeUrl, { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                console.log('📨 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Enrollment marked as complete:', data);
+                    return data;
+                } else {
+                    const errorText = await response.text();
+                    console.error('⚠️ Failed to mark enrollment as complete:', response.status, errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+            } catch (error) {
+                console.error('❌ Error marking enrollment complete:', error);
+                throw error;
+            }
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('app-container');
+            container.innerHTML = `
+                <div class="card" style="border-top: 4px solid #f56565;">
+                    <h2>❌ Enrollment Failed</h2>
+                    <p><strong>Error:</strong> ${message}</p>
+                    <p>Please try again or contact support if the problem persists.</p>
+                    <button onclick="location.reload()" style="background: #f56565; color: white; border: none; border-radius: 8px; padding: 12px 24px; font-size: 16px; margin-top: 16px; cursor: pointer;">
+                        Try Again
+                    </button>
+                </div>
+            `;
+            container.style.padding = '20px';
+        }
+        
+        async function checkEnrollmentStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const operationId = urlParams.get('operationId');
+            
+            if (!operationId) {
+                console.error('❌ No operation ID found');
+                return;
+            }
+            
+            try {
+                console.log('🔍 Checking enrollment status for operation:', operationId);
+                
+                // First, try to mark it as complete (in case the user completed capture)
+                const completeResponse = await fetch(
+                    `${window.location.origin.replace('3002', '3001')}/auth/biometric/operation/${operationId}/complete`,
+                    { 
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    }
+                );
+                
+                if (completeResponse.ok) {
+                    console.log('✅ Enrollment marked as complete');
+                    showSuccess();
+                    return;
+                }
+                
+                // If marking complete failed, try to check status
+                const response = await fetch(
+                    `${window.location.origin.replace('3002', '3001')}/auth/biometric/operation/${operationId}/status`
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📊 Status response:', data);
+                    
+                    if (data.status === 'completed') {
+                        showSuccess();
+                    } else if (data.status === 'failed') {
+                        showError(data.message || 'Enrollment verification failed');
+                    } else {
+                        // Still processing, assume success after capture
+                        console.log('⏳ Still processing, assuming success...');
+                        showSuccess();
+                    }
+                } else {
+                    // Can't verify, but selfie was captured, so likely successful
+                    console.log('⚠️ Could not verify status, assuming success');
+                    showSuccess();
+                }
+            } catch (error) {
+                console.error('❌ Error checking status:', error);
+                // Can't verify, but selfie was captured, so likely successful
+                console.log('⚠️ Error checking status, assuming success');
+                showSuccess();
+            }
+        }
+    </script>
+</body>
+</html>

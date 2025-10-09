@@ -67,7 +67,6 @@ struct DeviceMonitoringView: View {
             }
             .listStyle(.plain)
             .background(Color(.systemGray6).opacity(0.3))
-            .searchable(text: $searchText, prompt: "Search devices...")
         }
         .background(.gray.opacity(0.1))
         .navigationTitle("Devices")
@@ -367,12 +366,12 @@ struct ModernDeviceHeader: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Device Monitoring")
+                    Text("My devices")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(Color("BBMSBlack"))
                     
-                    Text("IoT Control Center")
+                    Text("Hardware Overview")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -435,14 +434,33 @@ struct SearchBarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray6))
+            GlassmorphismView()
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal, 20)
-        .padding(.bottom, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+}
+
+// UIViewRepresentable for native iOS glassmorphism effect
+struct GlassmorphismView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let blurEffect = UIBlurEffect(style: .systemThinMaterial)
+        let blurView = UIVisualEffectView(effect: blurEffect)
+        return blurView
+    }
+    
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
+        // No updates needed
     }
 }
 
 #Preview {
     DeviceMonitoringView()
+        .environmentObject(GlobalTemperatureMonitor.shared)
 }

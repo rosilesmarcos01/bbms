@@ -96,7 +96,7 @@ class UserService {
    * Get user by email
    */
   async getUserByEmail(email) {
-    for (const [id, user] of this.users) {
+    for (const [, user] of this.users) {
       if (user.email.toLowerCase() === email.toLowerCase()) {
         return user;
       }
@@ -190,6 +190,54 @@ class UserService {
    */
   async getBiometricEnrollment(userId) {
     return this.biometricEnrollments.get(userId) || null;
+  }
+
+  /**
+   * Get user by enrollment ID
+   */
+  async getUserByEnrollmentId(enrollmentId) {
+    // Find the user that has this enrollment ID
+    for (const [userId, enrollment] of this.biometricEnrollments) {
+      if (enrollment.enrollmentId === enrollmentId) {
+        const user = await this.getUserById(userId);
+        if (user) {
+          logger.info(`🔍 Found user by enrollment ID ${enrollmentId}: ${user.email}`);
+          return user;
+        }
+      }
+    }
+    logger.warn(`⚠️ No user found with enrollment ID: ${enrollmentId}`);
+    return null;
+  }
+
+  /**
+   * Find user by biometric template
+   * In production, this would query a proper database
+   */
+  async getUserByBiometricTemplate(biometricTemplate) {
+    // For development, we'll use device_id from the template as a simple identifier
+    // In production, this would match against stored biometric templates in AuthID
+    
+    // For now, return the first enrolled user or a default user
+    for (const [userId, enrollment] of this.biometricEnrollments) {
+      if (enrollment.status === 'completed') {
+        const user = await this.getUserById(userId);
+        if (user) {
+          logger.info(`🔍 Found user by biometric template: ${user.email}`);
+          return user;
+        }
+      }
+    }
+    
+    // Fallback to first active user for development
+    for (const [, user] of this.users) {
+      if (user.isActive) {
+        logger.info(`🔍 Using default active user for biometric: ${user.email}`);
+        return user;
+      }
+    }
+    
+    return null;
   }
 
   /**

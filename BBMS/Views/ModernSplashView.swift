@@ -1,68 +1,103 @@
 import SwiftUI
 
-struct CubeWireframeView: View {
-    @State private var rotationAngle: Double = 0
+struct ParticlesBackgroundView: View {
+    @State private var blocks: [Block] = []
+    let blockCount = 30
+    
+    struct Block: Identifiable {
+        let id = UUID()
+        var x: CGFloat
+        var y: CGFloat
+        var size: CGFloat
+        var opacity: Double
+        var speed: Double
+        var color: Color
+        var rotation: Double
+        var isConnected: Bool
+    }
     
     var body: some View {
-        GeometryReader { geometry in
-            let size = min(geometry.size.width, geometry.size.height)
-            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let cubeSize: CGFloat = size * 0.6
-            
-            ZStack {
-                // Front face
-                Path { path in
-                    let frontRect = CGRect(
-                        x: center.x - cubeSize/2,
-                        y: center.y - cubeSize/2,
-                        width: cubeSize,
-                        height: cubeSize
-                    )
-                    path.addRect(frontRect)
+        TimelineView(.animation) { timeline in
+            GeometryReader { geometry in
+                ZStack {
+                    // Draw connection lines between nearby blocks
+                    ForEach(blocks.indices, id: \.self) { index in
+                        let block = blocks[index]
+                        let time = timeline.date.timeIntervalSince1970
+                        let animatedY = block.y - CGFloat(time * block.speed * 25).truncatingRemainder(dividingBy: geometry.size.height + 100)
+                        
+                        if block.isConnected {
+                            ForEach(blocks.indices, id: \.self) { otherIndex in
+                                if index != otherIndex {
+                                    let otherBlock = blocks[otherIndex]
+                                    let otherAnimatedY = otherBlock.y - CGFloat(time * otherBlock.speed * 25).truncatingRemainder(dividingBy: geometry.size.height + 100)
+                                    let distance = sqrt(pow(block.x - otherBlock.x, 2) + pow(animatedY - otherAnimatedY, 2))
+                                    
+                                    if distance < 80 {
+                                        Path { path in
+                                            path.move(to: CGPoint(x: block.x, y: animatedY))
+                                            path.addLine(to: CGPoint(x: otherBlock.x, y: otherAnimatedY))
+                                        }
+                                        .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Draw the blocks
+                    ForEach(blocks.indices, id: \.self) { index in
+                        let block = blocks[index]
+                        let time = timeline.date.timeIntervalSince1970
+                        let animatedY = block.y - CGFloat(time * block.speed * 25).truncatingRemainder(dividingBy: geometry.size.height + 100)
+                        
+                        ZStack {
+                            // Outer border for blockchain effect
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(block.color.opacity(block.opacity * 0.8), lineWidth: 1.5)
+                                .frame(width: block.size + 2, height: block.size + 2)
+                            
+                            // Inner filled block
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(block.color.opacity(block.opacity * 0.6))
+                                .frame(width: block.size, height: block.size)
+                            
+                            // Hash-like pattern inside
+                            VStack(spacing: 1) {
+                                ForEach(0..<3) { _ in
+                                    HStack(spacing: 1) {
+                                        ForEach(0..<3) { _ in
+                                            Rectangle()
+                                                .fill(block.color.opacity(block.opacity * 0.3))
+                                                .frame(width: 1, height: 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .rotationEffect(.degrees(block.rotation + time * 60))
+                        .position(x: block.x, y: animatedY)
+                    }
                 }
-                .stroke(Color("BBMSGold").opacity(0.8), lineWidth: 2)
-                
-                // Back face (offset for 3D effect)
-                Path { path in
-                    let offset: CGFloat = cubeSize * 0.2
-                    let backRect = CGRect(
-                        x: center.x - cubeSize/2 + offset,
-                        y: center.y - cubeSize/2 - offset,
-                        width: cubeSize,
-                        height: cubeSize
-                    )
-                    path.addRect(backRect)
+                .onAppear {
+                    initializeBlocks(in: geometry.size)
                 }
-                .stroke(Color("BBMSGold").opacity(0.4), lineWidth: 1.5)
-                
-                // Connecting lines for 3D effect
-                Path { path in
-                    let offset: CGFloat = cubeSize * 0.2
-                    
-                    // Top-left to top-left
-                    path.move(to: CGPoint(x: center.x - cubeSize/2, y: center.y - cubeSize/2))
-                    path.addLine(to: CGPoint(x: center.x - cubeSize/2 + offset, y: center.y - cubeSize/2 - offset))
-                    
-                    // Top-right to top-right
-                    path.move(to: CGPoint(x: center.x + cubeSize/2, y: center.y - cubeSize/2))
-                    path.addLine(to: CGPoint(x: center.x + cubeSize/2 + offset, y: center.y - cubeSize/2 - offset))
-                    
-                    // Bottom-left to bottom-left
-                    path.move(to: CGPoint(x: center.x - cubeSize/2, y: center.y + cubeSize/2))
-                    path.addLine(to: CGPoint(x: center.x - cubeSize/2 + offset, y: center.y + cubeSize/2 - offset))
-                    
-                    // Bottom-right to bottom-right
-                    path.move(to: CGPoint(x: center.x + cubeSize/2, y: center.y + cubeSize/2))
-                    path.addLine(to: CGPoint(x: center.x + cubeSize/2 + offset, y: center.y + cubeSize/2 - offset))
-                }
-                .stroke(Color("BBMSGold").opacity(0.6), lineWidth: 1.5)
             }
-            .rotationEffect(.degrees(rotationAngle))
-            .onAppear {
-                withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
-                    rotationAngle = 360
-                }
-            }
+        }
+    }
+    
+    private func initializeBlocks(in size: CGSize) {
+        blocks = (0..<blockCount).map { _ in
+            Block(
+                x: CGFloat.random(in: 0...size.width),
+                y: CGFloat.random(in: 0...(size.height + 100)),
+                size: CGFloat.random(in: 8...12),
+                opacity: Double.random(in: 0.4...0.9),
+                speed: Double.random(in: 0.8...2.5),
+                color: [Color.primary, Color.secondary, Color.gray].randomElement() ?? Color.primary,
+                rotation: Double.random(in: 0...360),
+                isConnected: Bool.random()
+            )
         }
     }
 }
@@ -76,6 +111,10 @@ struct ModernSplashView: View {
     
     var body: some View {
         ZStack {
+            // Particles Background
+            ParticlesBackgroundView()
+                .ignoresSafeArea()
+            
             // Dynamic Background Gradient
             LinearGradient(
                 gradient: Gradient(colors: [
@@ -94,12 +133,6 @@ struct ModernSplashView: View {
                 
                 // Animated Logo
                 ZStack {
-                    // Outer cube animation (blockchain reference)
-                    CubeWireframeView()
-                        .frame(width: 140, height: 140)
-                        .scaleEffect(logoScale * 1.2)
-                        .opacity(logoOpacity * 0.5)
-                    
                     // Main logo
                     Image("BMSLogo")
                         .resizable()

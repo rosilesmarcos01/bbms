@@ -50,6 +50,19 @@ struct SettingsView: View {
                 }
                 #endif
                 
+                // Security Settings
+                Section(header: Text("Security")) {
+                    BiometricSettingsRow()
+                    
+                    NavigationLink(destination: BiometricSettingsView()) {
+                        HStack {
+                            Image(systemName: "lock.shield")
+                                .foregroundColor(.blue)
+                            Text("Authentication Settings")
+                        }
+                    }
+                }
+                
                 // Display Settings
                 Section(header: Text("Display")) {
                     Toggle("Dark Mode", isOn: Binding(

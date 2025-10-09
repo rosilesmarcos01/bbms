@@ -4,6 +4,7 @@ import LocalAuthentication
 struct BiometricSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authService = AuthService.shared
+    @StateObject private var biometricService = BiometricAuthService.shared
     @State private var enrollmentStatus: BiometricEnrollmentStatus?
     @State private var isLoadingStatus = false
     @State private var showingEnrollment = false

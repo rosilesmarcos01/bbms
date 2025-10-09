@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bundle Test</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        #root {
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>AuthID Bundle Test</h1>
+    <p>If you see React content below, the bundle is loading correctly:</p>
+    
+    <div id="root">
+        <p>⏳ Waiting for React to load...</p>
+    </div>
+    
+    <div id="debug">
+        <h3>Debug Info:</h3>
+        <pre id="console-output"></pre>
+    </div>
+    
+    <script>
+        // Capture console logs
+        const consoleOutput = document.getElementById('console-output');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+            consoleOutput.textContent += 'LOG: ' + args.join(' ') + '\n';
+            originalLog.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            consoleOutput.textContent += 'ERROR: ' + args.join(' ') + '\n';
+            originalError.apply(console, args);
+        };
+        
+        console.log('Starting bundle load...');
+    </script>
+    
+    <!-- Load the bundled React app -->
+    <script src="/dist/bundle.js"></script>
+    
+    <script>
+        setTimeout(() => {
+            const root = document.getElementById('root');
+            if (root.innerHTML.includes('Waiting for React')) {
+                consoleOutput.textContent += 'ERROR: React did not render!\n';
+                root.innerHTML = '<p style="color: red;">❌ React did not render. Check console output above.</p>';
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

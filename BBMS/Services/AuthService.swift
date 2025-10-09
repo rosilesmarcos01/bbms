@@ -11,8 +11,15 @@ class AuthService: ObservableObject {
     @Published var errorMessage: String?
     
     // MARK: - Configuration
-    private let authBaseURL = "http://10.10.62.45:3001/api"
+    // Configuration is managed in Config/AppConfig.swift
+    // Update IP by running ./update-ip.sh and rebuilding the app
+    private let authBaseURL = AppConfig.authBaseURL
     private let keychain = KeychainService.shared
+    
+    // Rate limiting to prevent too many auth requests
+    private var lastProfileCheck: Date = .distantPast
+    private var lastTokenValidation: Date = .distantPast
+    private let minRequestInterval: TimeInterval = 60 // Minimum 60 seconds between profile/token checks
     
     static let shared = AuthService()
     
@@ -88,58 +95,59 @@ class AuthService: ObservableObject {
         isLoading = false
     }
     
-    // MARK: - Biometric Authentication
+    // MARK: - Biometric Authentication (Updated for AuthID Integration)
     func biometricLogin() async {
         isLoading = true
         errorMessage = nil
         
         do {
-            // First check if biometric authentication is available
-            let context = LAContext()
-            var error: NSError?
+            // Check if user is enrolled in AuthID biometrics
+            let biometricService = BiometricAuthService.shared
             
-            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-                throw AuthError.biometricNotAvailable
+            if !biometricService.isEnrolled {
+                throw AuthError.biometricNotEnrolled
             }
             
-            // Perform biometric authentication
-            let reason = "Authenticate to access BBMS"
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthenticationWithBiometrics,
-                localizedReason: reason
-            )
+            // Use the new BiometricAuthService for AuthID integration
+            let result = try await biometricService.authenticateWithBiometrics()
             
-            if success {
-                // Generate biometric verification data (simplified for demo)
-                let biometricData = BiometricVerificationData(
-                    timestamp: Date(),
-                    deviceId: UIDevice.current.identifierForVendor?.uuidString ?? "unknown",
-                    biometricType: getBiometricType(context: context)
-                )
+            if result.success, let user = result.user, let tokens = result.tokens {
+                // Store tokens and update authentication state
+                keychain.saveAccessToken(tokens.accessToken)
+                if let refreshToken = tokens.refreshToken, !refreshToken.isEmpty {
+                    keychain.saveRefreshToken(refreshToken)
+                }
                 
-                let loginData = BiometricLoginRequest(
-                    verificationData: biometricData,
-                    accessPoint: "ios_app"
-                )
+                await MainActor.run {
+                    self.currentUser = user
+                    self.isAuthenticated = true
+                }
                 
-                let response = try await performRequest(
-                    endpoint: "/auth/biometric-login",
-                    method: "POST",
-                    body: loginData
-                ) as AuthResponse
-                
-                await handleAuthSuccess(response)
+                print("✅ Biometric authentication successful via AuthID")
+            } else {
+                throw AuthError.biometricAuthenticationFailed
             }
             
         } catch {
-            if let laError = error as? LAError {
+            if let biometricError = error as? BiometricError {
+                switch biometricError {
+                case .biometricNotAvailable:
+                    errorMessage = "Biometric authentication not available"
+                case .authenticationFailed:
+                    errorMessage = "Biometric authentication failed"
+                case .enrollmentRequired:
+                    errorMessage = "Please complete biometric enrollment first"
+                default:
+                    errorMessage = biometricError.localizedDescription
+                }
+            } else if let laError = error as? LAError {
                 switch laError.code {
                 case .userCancel, .userFallback:
                     errorMessage = "Biometric authentication cancelled"
                 case .biometryNotAvailable:
                     errorMessage = "Biometric authentication not available"
                 case .biometryNotEnrolled:
-                    errorMessage = "No biometric data enrolled"
+                    errorMessage = "No biometric data enrolled on device"
                 default:
                     errorMessage = "Biometric authentication failed"
                 }
@@ -174,6 +182,14 @@ class AuthService: ObservableObject {
     // MARK: - Profile Management
     func getCurrentProfile() async {
         guard isAuthenticated else { return }
+        
+        // Rate limiting: don't check profile more than once per minute
+        let now = Date()
+        if now.timeIntervalSince(lastProfileCheck) < minRequestInterval {
+            print("🛡️ AuthService: Skipping profile check due to rate limiting")
+            return
+        }
+        lastProfileCheck = now
         
         do {
             let response = try await performRequest(
@@ -216,7 +232,7 @@ class AuthService: ObservableObject {
     }
     
     // MARK: - Biometric Enrollment
-    func initiateBiometricEnrollment() async -> BiometricEnrollmentResponse? {
+    func initiateBiometricEnrollment() async -> AuthServiceBiometricEnrollmentResponse? {
         isLoading = true
         errorMessage = nil
         
@@ -225,7 +241,7 @@ class AuthService: ObservableObject {
                 endpoint: "/biometric/enroll",
                 method: "POST",
                 requiresAuth: true
-            ) as BiometricEnrollmentAPIResponse
+            ) as AuthServiceBiometricEnrollmentAPIResponse
             
             isLoading = false
             return response.enrollment
@@ -251,6 +267,17 @@ class AuthService: ObservableObject {
             print("Failed to get biometric enrollment status: \(error)")
             return nil
         }
+    }
+    
+    // Check if biometric enrollment is complete
+    func checkBiometricEnrollmentStatus() async throws -> (isEnrolled: Bool, status: String?) {
+        let enrollmentStatus = await getBiometricEnrollmentStatus()
+        
+        if let status = enrollmentStatus {
+            return (isEnrolled: status.status == "completed", status: status.status)
+        }
+        
+        return (isEnrolled: false, status: nil)
     }
     
     // MARK: - Building Access
@@ -312,6 +339,15 @@ class AuthService: ObservableObject {
     }
     
     private func validateToken(_ token: String) async {
+        // Rate limiting: don't validate token more than once per minute
+        let now = Date()
+        if now.timeIntervalSince(lastTokenValidation) < minRequestInterval {
+            print("🛡️ AuthService: Skipping token validation due to rate limiting")
+            isAuthenticated = true // Assume valid if recently checked
+            return
+        }
+        lastTokenValidation = now
+        
         do {
             let response = try await performAuthenticatedRequest(
                 endpoint: "/auth/me",
@@ -403,7 +439,7 @@ class AuthService: ObservableObject {
         }
         
         print("🚀 AuthService: Sending \(method) request...")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkService.shared.data(for: request)
         
         print("📨 AuthService: Received response")
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -420,7 +456,7 @@ class AuthService: ObservableObject {
                 var retryRequest = request
                 retryRequest.setValue("Bearer \(refreshedToken)", forHTTPHeaderField: "Authorization")
                 
-                let (retryData, retryResponse) = try await URLSession.shared.data(for: retryRequest)
+                let (retryData, retryResponse) = try await NetworkService.shared.data(for: retryRequest)
                 guard let retryHttpResponse = retryResponse as? HTTPURLResponse,
                       retryHttpResponse.statusCode < 400 else {
                     throw AuthError.unauthorized
@@ -506,7 +542,8 @@ struct AuthResponse: Codable {
     let message: String
     let user: User
     let accessToken: String
-    let biometricEnrollment: BiometricEnrollmentResponse?
+    let refreshToken: String?
+    let biometricEnrollment: AuthServiceBiometricEnrollmentResponse?
 }
 
 struct ProfileResponse: Codable {
@@ -523,16 +560,19 @@ struct RefreshTokenResponse: Codable {
     let accessToken: String
 }
 
-struct BiometricEnrollmentAPIResponse: Codable {
+struct AuthServiceBiometricEnrollmentAPIResponse: Codable {
     let message: String
-    let enrollment: BiometricEnrollmentResponse
+    let enrollment: AuthServiceBiometricEnrollmentResponse
+    let alreadyEnrolled: Bool?
 }
 
-struct BiometricEnrollmentResponse: Codable {
+struct AuthServiceBiometricEnrollmentResponse: Codable {
     let enrollmentId: String
-    let enrollmentUrl: String
+    let enrollmentUrl: String?
     let qrCode: String?
-    let expiresAt: String
+    let expiresAt: String?
+    let status: String?
+    let completedAt: String?
 }
 
 struct BiometricEnrollmentStatusResponse: Codable {
@@ -569,6 +609,8 @@ enum AuthError: Error, LocalizedError {
     case networkError
     case unauthorized
     case biometricNotAvailable
+    case biometricNotEnrolled
+    case biometricAuthenticationFailed
     case serverError(String)
     
     var errorDescription: String? {
@@ -581,6 +623,10 @@ enum AuthError: Error, LocalizedError {
             return "Authentication failed"
         case .biometricNotAvailable:
             return "Biometric authentication not available"
+        case .biometricNotEnrolled:
+            return "Biometric enrollment required"
+        case .biometricAuthenticationFailed:
+            return "Biometric authentication failed"
         case .serverError(let message):
             return message
         }

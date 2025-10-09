@@ -63,9 +63,11 @@ struct AuthenticatedView: View {
                 )
             )
         }
-        .task {
-            // Refresh user profile when authenticated view appears
-            await authService.getCurrentProfile()
+        .onAppear {
+            // Only check auth status once when the view appears
+            if !authService.isAuthenticated {
+                authService.checkAuthenticationStatus()
+            }
         }
     }
 }

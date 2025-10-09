@@ -7,6 +7,7 @@ class KeychainService {
     
     private let service = "com.bbms.auth"
     private let accessTokenKey = "access_token"
+    private let refreshTokenKey = "refresh_token"
     
     private init() {}
     
@@ -19,12 +20,21 @@ class KeychainService {
         return get(forKey: accessTokenKey)
     }
     
+    func saveRefreshToken(_ token: String) {
+        save(token, forKey: refreshTokenKey)
+    }
+    
+    func getRefreshToken() -> String? {
+        return get(forKey: refreshTokenKey)
+    }
+    
     func clearAllTokens() {
         delete(forKey: accessTokenKey)
+        delete(forKey: refreshTokenKey)
     }
     
     // MARK: - Generic Keychain Operations
-    private func save(_ value: String, forKey key: String) {
+    func save(_ value: String, forKey key: String) {
         guard let data = value.data(using: .utf8) else { return }
         
         let query: [String: Any] = [
@@ -45,7 +55,7 @@ class KeychainService {
         }
     }
     
-    private func get(forKey key: String) -> String? {
+    func get(forKey key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -66,7 +76,7 @@ class KeychainService {
         return string
     }
     
-    private func delete(forKey key: String) {
+    func delete(forKey key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
