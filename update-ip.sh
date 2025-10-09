@@ -63,11 +63,13 @@ update_env_file() {
         echo "HOST_IP=$DETECTED_IP" >> "$ENV_FILE"
     fi
     
-    # Update all service URLs with the new IP
+    # Update all service URLs with the new IP (both HTTP and HTTPS)
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s|http://[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:|http://$DETECTED_IP:|g" "$ENV_FILE"
+        sed -i '' "s|https://[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:|https://$DETECTED_IP:|g" "$ENV_FILE"
     else
         sed -i "s|http://[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:|http://$DETECTED_IP:|g" "$ENV_FILE"
+        sed -i "s|https://[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:|https://$DETECTED_IP:|g" "$ENV_FILE"
     fi
     
     echo "✅ Updated $SERVICE_NAME"
@@ -98,8 +100,8 @@ fi
 echo ""
 echo "📋 Updated Service URLs:"
 echo "  - Backend:    http://$DETECTED_IP:3000"
-echo "  - Auth:       http://$DETECTED_IP:3001"
-echo "  - AuthID Web: http://$DETECTED_IP:3002"
+echo "  - Auth:       https://$DETECTED_IP:3001"
+echo "  - AuthID Web: https://$DETECTED_IP:3002"
 echo ""
 echo "🔄 Next steps:"
 echo "  1. Restart all services:"

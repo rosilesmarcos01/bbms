@@ -1,4 +1,7 @@
 const express = require('express');
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -77,6 +80,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Health check endpoint under /api path (for certificate trust check)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    service: 'BBMS Authentication Service',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API Routes
 console.log('🔧 Mounting auth routes...');
 app.use('/api/auth', authRoutes);
@@ -114,10 +126,6 @@ process.on('SIGINT', () => {
 });
 
 // Try to load SSL certificates for HTTPS
-const https = require('https');
-const http = require('http');
-const fs = require('fs');
-
 let useHttps = false;
 let httpsOptions = {};
 
@@ -150,6 +158,7 @@ server.listen(PORT, '0.0.0.0', () => {
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   if (useHttps) {
     logger.info('🔒 HTTPS enabled (Self-signed certificate)');
+    logger.info('💡 Note: authid-web uses HTTP to avoid SSL certificate issues with IP addresses');
   }
 });
 
