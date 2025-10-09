@@ -487,15 +487,47 @@ class AuthService: ObservableObject {
     
     private func refreshToken() async -> String? {
         do {
-            let response = try await performAuthenticatedRequest(
-                endpoint: "/auth/refresh",
-                method: "POST"
-            ) as RefreshTokenResponse
+            // IMPORTANT: Do NOT use performAuthenticatedRequest here to avoid infinite recursion!
+            guard let refreshToken = keychain.getRefreshToken() else {
+                print("❌ No refresh token available")
+                return nil
+            }
             
-            keychain.saveAccessToken(response.accessToken)
-            return response.accessToken
+            guard let url = URL(string: "\(authBaseURL)/auth/refresh") else {
+                print("❌ Invalid refresh URL")
+                return nil
+            }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+            
+            print("🔄 Attempting to refresh access token...")
+            let (data, response) = try await NetworkService.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ Invalid response during refresh")
+                return nil
+            }
+            
+            print("📊 Refresh response status: \(httpResponse.statusCode)")
+            
+            guard httpResponse.statusCode == 200 else {
+                print("❌ Refresh failed with status \(httpResponse.statusCode)")
+                // Clear tokens if refresh fails
+                await handleLogout()
+                return nil
+            }
+            
+            let refreshResponse = try JSONDecoder().decode(RefreshTokenResponse.self, from: data)
+            keychain.saveAccessToken(refreshResponse.accessToken)
+            print("✅ Access token refreshed successfully")
+            return refreshResponse.accessToken
             
         } catch {
+            print("❌ Token refresh error: \(error.localizedDescription)")
+            await handleLogout()
             return nil
         }
     }

@@ -240,7 +240,7 @@
             console.log('📤 Marking enrollment as complete for operation:', operationId);
             
             // Build the URL - auth service is now on HTTPS too
-            const completeUrl = `https://${window.location.hostname}:3001/auth/biometric/operation/${operationId}/complete`;
+            const completeUrl = `https://${window.location.hostname}:3001/api/biometric/operation/${operationId}/complete`;
             console.log('🔗 Complete endpoint URL:', completeUrl);
             
             try {
@@ -298,7 +298,7 @@
                 
                 // First, try to mark it as complete (in case the user completed capture)
                 const completeResponse = await fetch(
-                    `${window.location.origin.replace('3002', '3001')}/auth/biometric/operation/${operationId}/complete`,
+                    `${window.location.origin.replace('3002', '3001')}/api/biometric/operation/${operationId}/complete`,
                     { 
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
@@ -313,7 +313,7 @@
                 
                 // If marking complete failed, try to check status
                 const response = await fetch(
-                    `${window.location.origin.replace('3002', '3001')}/auth/biometric/operation/${operationId}/status`
+                    `${window.location.origin.replace('3002', '3001')}/api/biometric/operation/${operationId}/status`
                 );
                 
                 if (response.ok) {

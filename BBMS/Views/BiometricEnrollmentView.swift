@@ -4,11 +4,12 @@ import LocalAuthentication
 import CoreImage.CIFilterBuiltins
 
 struct BiometricEnrollmentView: View {
-    @StateObject private var biometricService = BiometricAuthService.shared
+    @StateObject var biometricService = BiometricAuthService.shared
     @State private var showingEnrollmentSheet = false
     @State private var enrollmentURL: URL?
     @State private var showingQRCode = false
     @State private var qrCodeImage: UIImage?
+    @State private var statusCheckTimer: Timer?
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -146,7 +147,14 @@ struct BiometricEnrollmentView: View {
             .sheet(isPresented: $showingEnrollmentSheet) {
                 if let url = enrollmentURL {
                     SafariView(url: url)
+                        .onAppear {
+                            print("� Safari sheet appeared - starting enrollment status polling...")
+                            startStatusPolling()
+                        }
                         .onDisappear {
+                            print("🚪 Safari sheet dismissed - stopping polling and refreshing enrollment status")
+                            // Stop polling timer
+                            stopStatusPolling()
                             // When Safari closes, refresh enrollment status
                             refreshEnrollmentStatus()
                         }
@@ -163,14 +171,65 @@ struct BiometricEnrollmentView: View {
     }
     
     private func refreshEnrollmentStatus() {
+        print("🔄 refreshEnrollmentStatus called")
+        
         // Check if there's a pending enrollment
         if let enrollmentId = KeychainService.shared.getBiometricEnrollmentId() {
+            print("📋 Found enrollment ID in keychain: \(enrollmentId)")
             Task {
                 await biometricService.checkEnrollmentProgress(enrollmentId: enrollmentId)
             }
         } else {
+            print("⚠️ No enrollment ID in keychain, calling general status check")
             // Just check general enrollment status
             biometricService.checkEnrollmentStatus()
+        }
+    }
+    
+    private func startStatusPolling() {
+        // Poll every 3 seconds while Safari is open
+        statusCheckTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            print("⏱️ Polling enrollment status...")
+            
+            // Check if enrollment completed
+            if biometricService.isEnrolled {
+                print("🎉 Enrollment detected as complete! Closing Safari sheet...")
+                // Stop polling immediately
+                stopStatusPolling()
+                // Dismiss the Safari sheet
+                showingEnrollmentSheet = false
+                // Show success alert after a small delay to let sheet dismiss
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showEnrollmentSuccessAlert()
+                }
+            } else {
+                // Still in progress, keep checking
+                refreshEnrollmentStatus()
+            }
+        }
+    }
+    
+    private func stopStatusPolling() {
+        statusCheckTimer?.invalidate()
+        statusCheckTimer = nil
+        print("✅ Status polling stopped")
+    }
+    
+    private func showEnrollmentSuccessAlert() {
+        let alert = UIAlertController(
+            title: "🎉 Enrollment Complete!",
+            message: "You can now use biometric authentication to log in to BBMS!",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var presenter = rootViewController
+            while let presented = presenter.presentedViewController {
+                presenter = presented
+            }
+            presenter.present(alert, animated: true)
         }
     }
     
@@ -318,12 +377,45 @@ struct BiometricEnrollmentView: View {
 
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
+    var onAppear: (() -> Void)?
+    var onDisappear: (() -> Void)?
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onAppear: onAppear, onDisappear: onDisappear)
+    }
     
     func makeUIViewController(context: Context) -> SFSafariViewController {
-        return SFSafariViewController(url: url)
+        let safari = SFSafariViewController(url: url)
+        context.coordinator.safari = safari
+        
+        print("🔧 SafariView makeUIViewController called")
+        
+        // Trigger onAppear after a short delay to ensure it's presented
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("🔄 Safari sheet appeared - starting enrollment status polling...")
+            context.coordinator.onAppear?()
+        }
+        
+        return safari
     }
     
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+    
+    static func dismantleUIViewController(_ uiViewController: SFSafariViewController, coordinator: Coordinator) {
+        print("🚪 SafariView being dismantled - calling onDisappear")
+        coordinator.onDisappear?()
+    }
+    
+    class Coordinator {
+        var onAppear: (() -> Void)?
+        var onDisappear: (() -> Void)?
+        weak var safari: SFSafariViewController?
+        
+        init(onAppear: (() -> Void)?, onDisappear: (() -> Void)?) {
+            self.onAppear = onAppear
+            self.onDisappear = onDisappear
+        }
+    }
 }
 
 struct QRCodeView: View {

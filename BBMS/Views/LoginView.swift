@@ -74,6 +74,8 @@ struct LoginView: View {
         }
         .onAppear {
             setupBiometricType()
+            // Refresh biometric enrollment status
+            biometricService.checkEnrollmentStatus()
         }
         .sheet(isPresented: $showingBiometricSetup) {
             BiometricEnrollmentView()
@@ -173,6 +175,8 @@ struct LoginView: View {
             Divider()
                 .background(Color.gray.opacity(0.3))
             
+            // Only show biometric login if user is already enrolled
+            // Enrollment must be done AFTER logging in (from Settings screen)
             if biometricService.isEnrolled {
                 // User is enrolled - show biometric login button
                 Button(action: {
@@ -201,32 +205,9 @@ struct LoginView: View {
                     )
                 }
                 .disabled(authService.isLoading)
-            } else {
-                // User not enrolled - show setup button
-                VStack(spacing: 8) {
-                    HStack {
-                        Image(systemName: biometricIcon)
-                            .foregroundColor(.orange)
-                        Text("Biometric Authentication Available")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Spacer()
-                    }
-                    
-                    Button("Set Up \(biometricName)") {
-                        showingBiometricSetup = true
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.blue)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(8)
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
             }
+            // Note: Biometric enrollment is NOT shown on login screen
+            // Users must log in with email/password first, then enroll in Settings
         }
     }
     

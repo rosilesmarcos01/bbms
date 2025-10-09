@@ -27,14 +27,37 @@ class BiometricAuthService: ObservableObject {
     func checkEnrollmentStatus() {
         Task {
             do {
-                guard let userId = await getCurrentUserId() else { return }
+                print("🔍 BiometricAuthService: Checking enrollment status...")
                 
+                // First, check if there's a stored enrollment flag in keychain
+                let isEnrolledInKeychain = keychain.isBiometricEnrolled()
                 let enrollmentId = keychain.getBiometricEnrollmentId()
+                
+                print("📦 Keychain check:")
+                print("  - isEnrolled: \(isEnrolledInKeychain)")
+                print("  - enrollmentId: \(enrollmentId ?? "nil")")
+                
+                if isEnrolledInKeychain {
+                    await MainActor.run {
+                        self.isEnrolled = true
+                        print("✅ Set isEnrolled = true from keychain")
+                    }
+                }
+                
+                // Then verify with backend if we have a user ID
+                guard let userId = await getCurrentUserId() else { 
+                    print("ℹ️ No user logged in, using keychain enrollment status only")
+                    return 
+                }
+                
+                print("👤 User ID found: \(userId)")
+                
                 if let enrollmentId = enrollmentId {
+                    print("🔄 Checking enrollment progress with backend...")
                     await checkEnrollmentProgress(enrollmentId: enrollmentId)
                 }
             } catch {
-                print("Error checking enrollment status: \(error)")
+                print("❌ Error checking enrollment status: \(error)")
             }
         }
     }
@@ -99,20 +122,37 @@ class BiometricAuthService: ObservableObject {
     // MARK: - Check Enrollment Progress
     func checkEnrollmentProgress(enrollmentId: String) async {
         do {
+            print("🔍 Checking enrollment progress for ID: \(enrollmentId)")
+            
             let response: EnrollmentStatusResponse = try await performAPIRequest(
                 endpoint: "/biometric/enrollment/status?enrollmentId=\(enrollmentId)",
                 method: "GET"
             )
+            
+            print("📊 Enrollment status response:")
+            print("  - enrollment.enrollmentId: \(response.enrollment.enrollmentId)")
+            print("  - enrollment.status: \(response.enrollment.status)")
+            print("  - enrollment.progress: \(response.enrollment.progress)")
+            print("  - enrollment.completed: \(response.enrollment.completed)")
+            print("  - computed status: \(response.status)")
+            print("  - computed progress: \(response.progress)")
+            print("  - computed completed: \(response.completed)")
             
             await MainActor.run {
                 self.enrollmentProgress = Double(response.progress) / 100.0
                 self.enrollmentStatus = response.status
                 self.isEnrolled = response.completed
                 
+                print("🎯 Setting isEnrolled to: \(response.completed)")
+                
                 if response.completed {
                     self.isEnrolling = false
                     // Store that user is enrolled
                     self.keychain.setBiometricEnrolled(true)
+                    print("✅ Saved biometric_enrolled = true to keychain")
+                    print("🔍 Verifying keychain save: \(self.keychain.isBiometricEnrolled())")
+                } else {
+                    print("⏳ Enrollment not yet completed (status: \(response.status))")
                 }
             }
             
@@ -358,10 +398,21 @@ struct BiometricEnrollmentResponse: Codable {
 }
 
 struct EnrollmentStatusResponse: Codable {
+    let enrollment: EnrollmentStatus
+    
+    // Computed properties for convenience
+    var status: String { enrollment.status }
+    var progress: Int { enrollment.progress }
+    var completed: Bool { enrollment.completed }
+}
+
+struct EnrollmentStatus: Codable {
+    let enrollmentId: String
     let status: String
     let progress: Int
     let completed: Bool
-    let enrollmentData: EnrollmentData?
+    let createdAt: String?
+    let expiresAt: String?
 }
 
 struct EnrollmentData: Codable {
