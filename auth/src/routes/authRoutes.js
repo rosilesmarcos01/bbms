@@ -236,10 +236,13 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
 });
 
 /**
- * Biometric authentication login
- * POST /api/auth/biometric-login
+ * Initiate biometric authentication login
+ * POST /api/auth/biometric-login/initiate
+ * Step 1: Create authentication proof transaction
  */
-router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req, res) => {
+router.post('/biometric-login/initiate', authLimiter, [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -250,38 +253,208 @@ router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req,
       });
     }
 
-    const { verificationData, accessPoint = 'mobile_app' } = req.body;
+    const { email } = req.body;
 
-    // First, try to identify the user by their biometric template
-    let user = null;
-    if (verificationData.biometric_template) {
-      user = await userService.getUserByBiometricTemplate(verificationData.biometric_template);
-    }
-
+    // Get user by email
+    const user = await userService.getUserByEmail(email);
     if (!user) {
-      logger.warn('⚠️ Could not identify user from biometric template');
-      return res.status(401).json({
-        error: 'User not found or not enrolled',
-        code: 'USER_NOT_IDENTIFIED'
+      return res.status(404).json({
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
       });
     }
 
-    // Verify biometric with AuthID.ai
-    const biometricResult = await authIdService.verifyBiometric({
-      ...verificationData,
-      userId: user.id, // Now we can pass the user ID
-      accessPoint
+    if (!user.isActive) {
+      return res.status(401).json({
+        error: 'User account is inactive',
+        code: 'USER_INACTIVE'
+      });
+    }
+
+    // Check if user has biometric enrolled
+    // This assumes you track enrollment status in your user service
+    // If not enrolled, they should enroll first
+    
+    // Initiate authentication with AuthID
+    const authOperation = await authIdService.initiateBiometricLogin(user.id, {
+      name: user.name,
+      email: user.email,
+      department: user.department,
+      role: user.role
     });
 
-    if (!biometricResult.success) {
-      return res.status(401).json({
-        error: 'Biometric verification failed',
-        code: 'BIOMETRIC_VERIFICATION_FAILED'
+    logger.info(`🔐 Biometric login initiated for: ${email}`, {
+      operationId: authOperation.operationId
+    });
+
+    res.json({
+      message: 'Biometric authentication initiated',
+      operationId: authOperation.operationId,
+      authUrl: authOperation.authUrl,
+      qrCode: authOperation.qrCode,
+      expiresAt: authOperation.expiresAt
+    });
+
+  } catch (error) {
+    logger.error('❌ Failed to initiate biometric login:', error.message);
+    res.status(500).json({
+      error: 'Failed to initiate biometric login',
+      code: 'BIOMETRIC_LOGIN_INITIATION_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Poll for biometric authentication result
+ * GET /api/auth/biometric-login/poll/:operationId
+ * Step 2: Check if authentication is complete
+ */
+router.get('/biometric-login/poll/:operationId', authLimiter, async (req, res) => {
+  try {
+    const { operationId } = req.params;
+
+    if (!operationId) {
+      return res.status(400).json({
+        error: 'Operation ID is required',
+        code: 'INVALID_OPERATION_ID'
       });
     }
 
-    // Double-check user is active
-    if (!user?.isActive) {
+    // Check operation status
+    const status = await authIdService.checkOperationStatus(operationId);
+
+    // State: 0=Pending, 1=Completed, 2=Failed, 3=Expired
+    // Result: 0=None, 1=Success, 2=Failure
+    
+    if (status.state === 0) {
+      // Still pending
+      return res.json({
+        status: 'pending',
+        message: 'Authentication in progress',
+        operationId
+      });
+    } else if (status.state === 1 && status.result === 1) {
+      // Completed successfully
+      return res.json({
+        status: 'completed',
+        message: 'Authentication completed - call verify endpoint',
+        operationId
+      });
+    } else if (status.state === 1 && status.result === 2) {
+      // Completed but failed
+      return res.json({
+        status: 'failed',
+        message: 'Biometric verification failed',
+        operationId
+      });
+    } else if (status.state === 2) {
+      // Operation failed
+      return res.json({
+        status: 'failed',
+        message: 'Operation failed',
+        operationId
+      });
+    } else if (status.state === 3) {
+      // Expired
+      return res.json({
+        status: 'expired',
+        message: 'Operation expired - please try again',
+        operationId
+      });
+    }
+
+    res.json({
+      status: 'unknown',
+      message: 'Unknown operation state',
+      operationId,
+      state: status.state,
+      result: status.result
+    });
+
+  } catch (error) {
+    logger.error('❌ Failed to poll biometric login status:', error.message);
+    res.status(500).json({
+      error: 'Failed to check authentication status',
+      code: 'POLL_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Verify biometric authentication and issue JWT
+ * POST /api/auth/biometric-login/verify
+ * Step 3: Validate proof and issue access token
+ */
+router.post('/biometric-login/verify', authLimiter, [
+  body('operationId').notEmpty().withMessage('Operation ID is required'),
+  body('accountNumber').notEmpty().withMessage('Account number is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: errors.array()
+      });
+    }
+
+    const { operationId, accountNumber } = req.body;
+
+    // Get the operation result (proof data)
+    const proofResult = await authIdService.getOperationResult(operationId);
+
+    if (!proofResult.success) {
+      return res.status(400).json({
+        error: 'Failed to retrieve authentication proof',
+        code: 'PROOF_RETRIEVAL_ERROR'
+      });
+    }
+
+    // Validate the proof
+    const validation = authIdService.validateProof(proofResult.result);
+
+    if (validation.decision === 'reject') {
+      logger.warn('❌ Authentication proof rejected', {
+        operationId,
+        accountNumber,
+        reasons: validation.reasons
+      });
+
+      return res.status(401).json({
+        error: 'Authentication proof rejected',
+        code: 'PROOF_REJECTED',
+        reasons: validation.reasons
+      });
+    }
+
+    if (validation.decision === 'manual_review') {
+      logger.warn('⚠️ Authentication proof requires manual review', {
+        operationId,
+        accountNumber,
+        warnings: validation.warnings
+      });
+
+      return res.status(202).json({
+        message: 'Authentication requires manual review',
+        code: 'MANUAL_REVIEW_REQUIRED',
+        warnings: validation.warnings
+      });
+    }
+
+    // Proof is valid - get user and issue token
+    const user = await userService.getUserById(accountNumber);
+    
+    if (!user) {
+      return res.status(404).json({
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    if (!user.isActive) {
       return res.status(401).json({
         error: 'User account is inactive',
         code: 'USER_INACTIVE'
@@ -301,11 +474,159 @@ router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req,
 
     // Log access
     await userService.logUserAccess(user.id, 'biometric_login', req.ip, {
-      confidence: biometricResult.confidence,
-      verificationId: biometricResult.verificationId
+      operationId,
+      confidence: validation.proof.confidenceScore,
+      faceMatchScore: validation.proof.faceMatchScore
     });
 
-    logger.info(`🔍 Biometric login successful: ${user.email} (confidence: ${biometricResult.confidence})`);
+    logger.info(`✅ Biometric login successful: ${user.email}`, {
+      operationId,
+      confidence: validation.proof.confidenceScore
+    });
+
+    res.json({
+      message: 'Biometric login successful',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        department: user.department,
+        role: user.role,
+        accessLevel: user.accessLevel,
+        joinDate: user.createdAt,
+        isActive: user.isActive,
+        lastLoginAt: user.lastLoginAt,
+        createdAt: user.createdAt,
+        preferences: {
+          notificationsEnabled: true,
+          darkModeEnabled: false,
+          alertsEnabled: true,
+          emailNotifications: true,
+          pushNotifications: true,
+          language: "English",
+          temperatureUnit: "Celsius",
+          enableBiometricLogin: true,
+          enableBuildingAccess: false,
+          requireBiometricForSensitiveActions: false
+        }
+      },
+      accessToken,
+      biometric: {
+        confidence: validation.proof.confidenceScore,
+        faceMatchScore: validation.proof.faceMatchScore,
+        operationId
+      }
+    });
+
+  } catch (error) {
+    logger.error('❌ Biometric login verification failed:', error.message);
+    res.status(500).json({
+      error: 'Biometric login verification failed',
+      code: 'VERIFICATION_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Complete biometric login (all-in-one polling)
+ * POST /api/auth/biometric-login/complete
+ * Alternative: Wait for completion and verify in one request
+ */
+router.post('/biometric-login/complete', authLimiter, [
+  body('operationId').notEmpty().withMessage('Operation ID is required'),
+  body('accountNumber').notEmpty().withMessage('Account number is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: errors.array()
+      });
+    }
+
+    const { operationId, accountNumber } = req.body;
+
+    // Wait for authentication to complete (with polling)
+    const authResult = await authIdService.waitForAuthenticationProof(
+      operationId,
+      accountNumber,
+      60, // max 60 attempts
+      2000 // poll every 2 seconds
+    );
+
+    if (!authResult.success) {
+      return res.status(401).json({
+        error: authResult.error || 'Authentication failed',
+        code: 'AUTHENTICATION_FAILED'
+      });
+    }
+
+    // Validate the proof
+    const validation = authIdService.validateProof(authResult.proof);
+
+    if (validation.decision === 'reject') {
+      logger.warn('❌ Authentication proof rejected', {
+        operationId,
+        accountNumber,
+        reasons: validation.reasons
+      });
+
+      return res.status(401).json({
+        error: 'Authentication proof rejected',
+        code: 'PROOF_REJECTED',
+        reasons: validation.reasons
+      });
+    }
+
+    if (validation.decision === 'manual_review') {
+      logger.warn('⚠️ Authentication proof requires manual review', {
+        operationId,
+        accountNumber,
+        warnings: validation.warnings
+      });
+
+      return res.status(202).json({
+        message: 'Authentication requires manual review',
+        code: 'MANUAL_REVIEW_REQUIRED',
+        warnings: validation.warnings
+      });
+    }
+
+    // Proof is valid - get user and issue token
+    const user = await userService.getUserById(accountNumber);
+    
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        error: 'User not found or inactive',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Generate JWT tokens
+    const { accessToken, refreshToken } = generateTokens(user);
+
+    // Set refresh token in HTTP-only cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    // Log access
+    await userService.logUserAccess(user.id, 'biometric_login', req.ip, {
+      operationId,
+      confidence: validation.proof.confidenceScore,
+      faceMatchScore: validation.proof.faceMatchScore
+    });
+
+    logger.info(`✅ Biometric login completed: ${user.email}`, {
+      operationId,
+      confidence: validation.proof.confidenceScore
+    });
 
     res.json({
       message: 'Biometric login successful',
@@ -319,16 +640,18 @@ router.post('/biometric-login', authLimiter, validateBiometricLogin, async (req,
       },
       accessToken,
       biometric: {
-        confidence: biometricResult.confidence,
-        verificationId: biometricResult.verificationId
+        confidence: validation.proof.confidenceScore,
+        faceMatchScore: validation.proof.faceMatchScore,
+        operationId
       }
     });
 
   } catch (error) {
-    logger.error('❌ Biometric login failed:', error.message);
+    logger.error('❌ Biometric login completion failed:', error.message);
     res.status(500).json({
       error: 'Biometric login failed',
-      code: 'BIOMETRIC_LOGIN_ERROR'
+      code: 'LOGIN_ERROR',
+      message: error.message
     });
   }
 });

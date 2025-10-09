@@ -594,40 +594,75 @@ class AuthIDService {
   }
 
   /**
-   * Check the status of an enrollment operation
-   * @param {string} operationId - The operation ID from AuthID
+   * Check the status of an authentication operation or transaction
+   * @param {string} operationId - The operation or transaction ID from AuthID
    */
   async checkOperationStatus(operationId) {
     try {
-      logger.info('🔍 Checking AuthID operation status', { operationId });
+      logger.info('🔍 Checking AuthID operation/transaction status', { operationId });
 
-      const response = await axios.get(
-        `${this.transactionURL}/v2/operations/${operationId}`,
-        { headers: await this.getAuthHeaders() }
-      );
+      // Try operations endpoint first
+      try {
+        const response = await axios.get(
+          `${this.transactionURL}/v2/operations/${operationId}`,
+          { headers: await this.getAuthHeaders() }
+        );
 
-      const status = response.data;
-      
-      logger.info('✅ Operation status retrieved', { 
-        operationId,
-        state: status.State,
-        result: status.Result 
-      });
+        const status = response.data;
+        
+        logger.info('✅ Operation status retrieved', { 
+          operationId,
+          state: status.State,
+          result: status.Result 
+        });
 
-      return {
-        success: true,
-        operationId: status.OperationId,
-        state: status.State, // 0=Pending, 1=Completed, 2=Failed, 3=Expired
-        result: status.Result, // 0=None, 1=Success, 2=Failure
-        accountNumber: status.AccountNumber,
-        name: status.Name,
-        createdAt: status.CreatedAt,
-        completedAt: status.CompletedAt,
-        tag: status.Tag
-      };
+        return {
+          success: true,
+          operationId: status.OperationId,
+          state: status.State, // 0=Pending, 1=Completed, 2=Failed, 3=Expired
+          result: status.Result, // 0=None, 1=Success, 2=Failure
+          accountNumber: status.AccountNumber,
+          name: status.Name,
+          createdAt: status.CreatedAt,
+          completedAt: status.CompletedAt,
+          tag: status.Tag
+        };
+      } catch (opError) {
+        // If operation not found, try transaction endpoint
+        if (opError.response?.status === 404) {
+          logger.info('🔄 Operation not found, trying transaction endpoint', { operationId });
+          
+          const txResponse = await axios.get(
+            `${this.transactionURL}/v2/transactions/${operationId}`,
+            { headers: await this.getAuthHeaders() }
+          );
+
+          const txStatus = txResponse.data;
+          
+          logger.info('✅ Transaction status retrieved', { 
+            transactionId: operationId,
+            state: txStatus.State,
+            result: txStatus.Result 
+          });
+
+          return {
+            success: true,
+            operationId: txStatus.TransactionId,
+            transactionId: txStatus.TransactionId,
+            state: txStatus.State,
+            result: txStatus.Result,
+            accountNumber: txStatus.AccountNumber,
+            createdAt: txStatus.CreatedAt,
+            completedAt: txStatus.CompletedAt,
+            tag: txStatus.Tag,
+            isTransaction: true
+          };
+        }
+        throw opError;
+      }
 
     } catch (error) {
-      logger.error('❌ Failed to check operation status', { 
+      logger.error('❌ Failed to check operation/transaction status', { 
         error: error.message,
         response: error.response?.data,
         operationId 
@@ -750,32 +785,367 @@ class AuthIDService {
 
   /**
    * Initiate biometric login/verification
-   * For now, we'll use the same enrollment flow and let the user re-enroll
-   * In production, you'd want to configure proper verification operations
+   * Creates a Verify_Identity transaction for authentication
+   * Using CredentialType 1 for face biometric (not FIDO2)
    */
   async initiateBiometricLogin(userId, userData = {}) {
     try {
-      logger.info('🔐 Initiating biometric login (using enrollment operation)', { userId });
+      logger.info('🔐 Initiating biometric authentication with Verify_Identity', { userId });
 
-      // WORKAROUND: Since we can't find the correct verification operation,
-      // we'll use EnrollBioCredential which will fail if already enrolled.
-      // The proper solution is to configure transaction templates in AuthID portal
-      // or contact AuthID support to enable verification operations.
-      
-      // For now, return an error with instructions
-      throw new Error(
-        'Biometric login via AuthID requires configuration of transaction templates. ' +
-        'Please contact AuthID support to enable "Verify_Identity" or similar verification templates ' +
-        'for your UAT environment. Alternatively, implement password-based login with optional biometric enrollment.'
+      // Use CredentialType 1 for face biometric (matches EnrollBioCredential)
+      const transactionData = {
+        AccountNumber: userId,
+        Timeout: 300, // 5 minutes (in seconds)
+        ConfirmationPolicy: {
+          TransportType: 0, // 0 = Push notification
+          CredentialType: 1, // 1 = Biometric (face), not 4 (FIDO2)
+          MinimumConfidence: 0.85,
+          MaximumAttempts: 3
+        },
+        Name: "Verify_Identity" // Authentication operation name
+      };
+
+      logger.info('📤 Creating Verify_Identity transaction', { 
+        url: `${this.transactionURL}/v2/transactions`,
+        userId,
+        name: 'Verify_Identity',
+        credentialType: 1
+      });
+
+      const transactionResponse = await axios.post(
+        `${this.transactionURL}/v2/transactions`,
+        transactionData,
+        { headers: await this.getAuthHeaders() }
       );
 
+      const transactionId = transactionResponse.data.TransactionId;
+      const oneTimeSecret = transactionResponse.data.OneTimeSecret;
+      
+      logger.info('📋 AuthID Verify_Identity Transaction Created', { 
+        transactionId,
+        oneTimeSecret: oneTimeSecret ? '***' : 'missing',
+        fullResponse: transactionResponse.data
+      });
+      
+      // Construct authentication URL pointing to our hosted React component page
+      const authWebUrl = process.env.AUTHID_WEB_URL || 'http://localhost:3002';
+      const authUrl = `${authWebUrl}?transactionId=${transactionId}&secret=${oneTimeSecret}&baseUrl=${encodeURIComponent('https://id-uat.authid.ai')}&mode=authentication`;
+      
+      logger.info('✅ Biometric authentication transaction created', { 
+        transactionId,
+        userId,
+        authUrl
+      });
+
+      return {
+        success: true,
+        operationId: transactionId, // Using transactionId as operationId for consistency
+        transactionId: transactionId,
+        authUrl: authUrl,
+        qrCode: authUrl,
+        oneTimeSecret: oneTimeSecret,
+        expiresAt: new Date(Date.now() + 300 * 1000).toISOString() // 5 minutes
+      };
+
     } catch (error) {
-      logger.error('❌ Failed to initiate AuthID login', { 
+      logger.error('❌ Failed to initiate AuthID authentication', { 
         error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
         userId 
       });
       
-      throw new Error(`AuthID login initiation failed: ${error.message}`);
+      const errorMessage = error.response?.data?.message || error.response?.data?.Message || error.message;
+      throw new Error(`AuthID authentication failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Get the result of an authentication operation or transaction
+   * This retrieves the proof data after user completes verification
+   */
+  async getOperationResult(operationId) {
+    try {
+      logger.info('🔍 Getting AuthID operation/transaction result', { operationId });
+
+      // Try operations result endpoint first
+      try {
+        const response = await axios.get(
+          `${this.transactionURL}/v2/operations/${operationId}/result`,
+          { headers: await this.getAuthHeaders() }
+        );
+
+        const result = response.data;
+        
+        logger.info('✅ Operation result retrieved', { 
+          operationId,
+          hasResult: !!result,
+          resultKeys: result ? Object.keys(result) : []
+        });
+
+        return {
+          success: true,
+          operationId,
+          result: result,
+          rawData: response.data
+        };
+      } catch (opError) {
+        // If operation not found, try transaction result endpoint
+        if (opError.response?.status === 404) {
+          logger.info('🔄 Operation result not found, trying transaction endpoint', { operationId });
+          
+          const txResponse = await axios.get(
+            `${this.transactionURL}/v2/transactions/${operationId}/result`,
+            { headers: await this.getAuthHeaders() }
+          );
+
+          const txResult = txResponse.data;
+          
+          logger.info('✅ Transaction result retrieved', { 
+            transactionId: operationId,
+            hasResult: !!txResult,
+            resultKeys: txResult ? Object.keys(txResult) : []
+          });
+
+          return {
+            success: true,
+            operationId,
+            transactionId: operationId,
+            result: txResult,
+            rawData: txResponse.data,
+            isTransaction: true
+          };
+        }
+        throw opError;
+      }
+
+    } catch (error) {
+      logger.error('❌ Failed to get operation/transaction result', { 
+        error: error.message,
+        response: error.response?.data,
+        operationId 
+      });
+      
+      throw new Error(`Failed to get result: ${error.response?.data?.Message || error.message}`);
+    }
+  }
+
+  /**
+   * Wait for user to complete authentication proof
+   * Polls AuthID until the operation completes or times out
+   */
+  async waitForAuthenticationProof(operationId, accountNumber, maxAttempts = 60, pollInterval = 2000) {
+    try {
+      logger.info('⏳ Waiting for authentication proof completion', { 
+        operationId, 
+        accountNumber,
+        maxAttempts,
+        pollInterval 
+      });
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Check operation status
+        const status = await this.checkOperationStatus(operationId);
+        
+        logger.info(`📊 Poll attempt ${attempt}/${maxAttempts}`, {
+          operationId,
+          state: status.state,
+          result: status.result
+        });
+
+        // State: 0=Pending, 1=Completed, 2=Failed, 3=Expired
+        // Result: 0=None, 1=Success, 2=Failure
+        
+        if (status.state === 1) { // Completed
+          if (status.result === 1) { // Success
+            // Get the full proof result
+            const proofResult = await this.getOperationResult(operationId);
+            
+            logger.info('✅ Authentication proof completed successfully', {
+              operationId,
+              accountNumber
+            });
+            
+            return {
+              success: true,
+              proof: proofResult.result,
+              status: status
+            };
+          } else if (status.result === 2) { // Failure
+            logger.warn('❌ Authentication proof failed', {
+              operationId,
+              accountNumber
+            });
+            
+            return {
+              success: false,
+              error: 'Authentication failed - biometric verification unsuccessful',
+              status: status
+            };
+          }
+        } else if (status.state === 2) { // Failed
+          logger.warn('❌ Operation failed', {
+            operationId,
+            accountNumber
+          });
+          
+          return {
+            success: false,
+            error: 'Operation failed',
+            status: status
+          };
+        } else if (status.state === 3) { // Expired
+          logger.warn('⏰ Operation expired', {
+            operationId,
+            accountNumber
+          });
+          
+          return {
+            success: false,
+            error: 'Operation expired - please try again',
+            status: status
+          };
+        }
+
+        // Still pending, wait before next poll
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+      }
+
+      // Timeout
+      logger.warn('⏰ Polling timeout - operation still pending', {
+        operationId,
+        accountNumber,
+        attempts: maxAttempts
+      });
+
+      return {
+        success: false,
+        error: 'Timeout waiting for authentication - operation still pending',
+        timeout: true
+      };
+
+    } catch (error) {
+      logger.error('❌ Error waiting for authentication proof', { 
+        error: error.message,
+        operationId,
+        accountNumber 
+      });
+      
+      throw new Error(`Failed to wait for proof: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validate authentication proof data
+   * Checks all security fields to ensure the proof is acceptable
+   * Based on the research, we need to validate many fields
+   */
+  validateProof(proof) {
+    try {
+      logger.info('🔍 Validating authentication proof', {
+        hasProof: !!proof,
+        proofKeys: proof ? Object.keys(proof) : []
+      });
+
+      if (!proof) {
+        return {
+          valid: false,
+          decision: 'reject',
+          reasons: ['No proof data provided']
+        };
+      }
+
+      const warnings = [];
+      const errors = [];
+      
+      // Check liveness (critical)
+      if (proof.IsLive === false) {
+        errors.push('Liveness check failed');
+      }
+      
+      // Check for injection attacks (critical)
+      if (proof.SelfieInjectionDetection === 'Fail' || proof.SelfieInjectionDetection === 'Reject') {
+        errors.push('Selfie injection detected');
+      }
+      
+      if (proof.DocumentInjectionDetection === 'Fail' || proof.DocumentInjectionDetection === 'Reject') {
+        errors.push('Document injection detected');
+      }
+      
+      // Check document validity
+      if (proof.DocumentExpired === true) {
+        errors.push('Document expired');
+      }
+      
+      // Check barcode/MRZ consistency
+      if (proof.BarcodeSecurityCheck === 'Fail') {
+        warnings.push('Barcode security check failed');
+      }
+      
+      if (proof.MRZOCRMismatch === 'Fail') {
+        warnings.push('MRZ OCR mismatch detected');
+      }
+      
+      // Check PAD (Presentation Attack Detection)
+      if (proof.PadResult === 'Reject') {
+        errors.push('Presentation attack detected');
+      } else if (proof.PadResult === 'Manual Review') {
+        warnings.push('PAD requires manual review');
+      }
+      
+      // Check face match quality
+      if (proof.FaceMatchScore !== undefined && proof.FaceMatchScore < 0.80) {
+        warnings.push(`Low face match score: ${proof.FaceMatchScore}`);
+      }
+      
+      // Check overall confidence
+      if (proof.ConfidenceScore !== undefined && proof.ConfidenceScore < 0.85) {
+        warnings.push(`Low confidence score: ${proof.ConfidenceScore}`);
+      }
+
+      // Determine decision
+      let decision = 'accept';
+      const reasons = [];
+
+      if (errors.length > 0) {
+        decision = 'reject';
+        reasons.push(...errors);
+      } else if (warnings.length > 0) {
+        decision = 'manual_review';
+        reasons.push(...warnings);
+      }
+
+      logger.info('✅ Proof validation complete', {
+        decision,
+        errors: errors.length,
+        warnings: warnings.length
+      });
+
+      return {
+        valid: decision === 'accept',
+        decision, // 'accept', 'reject', 'manual_review'
+        reasons,
+        errors,
+        warnings,
+        proof: {
+          isLive: proof.IsLive,
+          confidenceScore: proof.ConfidenceScore,
+          faceMatchScore: proof.FaceMatchScore,
+          documentExpired: proof.DocumentExpired
+        }
+      };
+
+    } catch (error) {
+      logger.error('❌ Error validating proof', { error: error.message });
+      
+      return {
+        valid: false,
+        decision: 'reject',
+        reasons: ['Proof validation error'],
+        error: error.message
+      };
     }
   }
 }
