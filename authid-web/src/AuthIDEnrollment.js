@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 // Import the web component - it registers itself as a custom element
 import '@authid/web-component';
 
@@ -41,7 +41,7 @@ function AuthIDEnrollment() {
     console.log('📋 AuthID Operation URL:', operationURL);
   }, []);
 
-  const handleControl = (msg, authidControlFace) => {
+  const handleControl = useCallback((msg, authidControlFace) => {
     console.log('🎮 AuthID Control Message:', msg);
 
     // Handle success
@@ -77,7 +77,73 @@ function AuthIDEnrollment() {
       console.log('⚠️ Enrollment cancelled');
       setStatus('cancelled');
     }
-  };
+  }, [params.operationId]);
+
+  // Create and mount the AuthID web component
+  useEffect(() => {
+    if (status === 'ready' && params.operationURL) {
+      const container = document.getElementById('authid-container');
+      if (container) {
+        console.log('📦 Creating authid-component element...');
+        console.log('customElements.get before:', customElements.get('authid-component'));
+        
+        // Create the custom element
+        const authidElement = document.createElement('authid-component');
+        authidElement.setAttribute('data-url', params.operationURL);
+        authidElement.setAttribute('data-target', 'auto');
+        authidElement.setAttribute('data-webauth', 'true');
+        authidElement.setAttribute('data-control', 'true');
+        
+        // Listen for AuthID control messages (success, error, cancel)
+        const handleControlMessage = (event) => {
+          console.log('🎮 AuthID Control Event:', event);
+          if (event.detail) {
+            handleControl(event.detail, authidElement);
+          }
+        };
+        
+        authidElement.addEventListener('control', handleControlMessage);
+        authidElement.addEventListener('authid-control', handleControlMessage);
+        
+        // Listen for load event
+        authidElement.addEventListener('load', () => {
+          console.log('🎬 AuthID component loaded');
+        });
+        
+        // Listen for success event
+        authidElement.addEventListener('success', (event) => {
+          console.log('✅ AuthID Success Event:', event);
+          handleControl({ type: 'success', status: 'completed' }, authidElement);
+        });
+        
+        // Listen for error event
+        authidElement.addEventListener('error', (event) => {
+          console.log('❌ AuthID Error Event:', event);
+          handleControl({ type: 'error', status: 'failed', error: event.detail }, authidElement);
+        });
+        
+        // Listen for cancel event
+        authidElement.addEventListener('cancel', (event) => {
+          console.log('⚠️ AuthID Cancel Event:', event);
+          handleControl({ type: 'cancel', status: 'cancelled' }, authidElement);
+        });
+        
+        // Append to container
+        container.appendChild(authidElement);
+        console.log('✅ authid-component appended:', authidElement);
+        console.log('customElements.get after:', customElements.get('authid-component'));
+        
+        // Cleanup
+        return () => {
+          if (container.contains(authidElement)) {
+            authidElement.removeEventListener('control', handleControlMessage);
+            authidElement.removeEventListener('authid-control', handleControlMessage);
+            container.removeChild(authidElement);
+          }
+        };
+      }
+    }
+  }, [status, params.operationURL, handleControl]);
 
   // Render different states
   if (status === 'loading') {
@@ -149,41 +215,6 @@ function AuthIDEnrollment() {
       </div>
     );
   }
-
-  // Create and mount the AuthID web component
-  useEffect(() => {
-    if (status === 'ready' && params.operationURL) {
-      const container = document.getElementById('authid-container');
-      if (container) {
-        console.log('📦 Creating authid-component element...');
-        console.log('customElements.get before:', customElements.get('authid-component'));
-        
-        // Create the custom element
-        const authidElement = document.createElement('authid-component');
-        authidElement.setAttribute('data-url', params.operationURL);
-        authidElement.setAttribute('data-target', 'auto');
-        authidElement.setAttribute('data-webauth', 'true');
-        authidElement.setAttribute('data-control', 'true');
-        
-        // Listen for load event
-        authidElement.addEventListener('load', () => {
-          console.log('🎬 AuthID component loaded');
-        });
-        
-        // Append to container
-        container.appendChild(authidElement);
-        console.log('✅ authid-component appended:', authidElement);
-        console.log('customElements.get after:', customElements.get('authid-component'));
-        
-        // Cleanup
-        return () => {
-          if (container.contains(authidElement)) {
-            container.removeChild(authidElement);
-          }
-        };
-      }
-    }
-  }, [status, params.operationURL]);
 
   // Render container for AuthID Web Component (for ready state)
   if (status === 'ready') {

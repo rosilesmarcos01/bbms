@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biometric Login - BBMS</title>
+    <script src="https://cdn.authid.ai/sdk/web/v4/authid-web-component.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        #app-container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 24px;
+            font-size: 16px;
+        }
+        
+        .status {
+            padding: 16px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-weight: 500;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .status.pending { 
+            background: #fef3c7; 
+            color: #92400e;
+            border: 2px solid #fbbf24;
+        }
+        .status.pending::before {
+            background: #f59e0b;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .status.success { 
+            background: #d1fae5; 
+            color: #065f46;
+            border: 2px solid #34d399;
+        }
+        .status.success::before {
+            background: #10b981;
+        }
+        
+        .status.error { 
+            background: #fee2e2; 
+            color: #991b1b;
+            border: 2px solid #f87171;
+        }
+        .status.error::before {
+            background: #ef4444;
+        }
+        
+        .status.verifying {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 2px solid #60a5fa;
+        }
+        .status.verifying::before {
+            background: #3b82f6;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #authid-container {
+            margin-top: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        authid-web-component {
+            display: block;
+            width: 100%;
+            min-height: 500px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+        }
+        
+        .welcome-text {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+            margin: 16px 0;
+        }
+        
+        .user-info {
+            background: #f3f4f6;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            text-align: left;
+        }
+        
+        .user-info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .user-info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .user-info-label {
+            font-weight: 600;
+            color: #6b7280;
+        }
+        
+        .user-info-value {
+            color: #1f2937;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 16px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .error-message {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 4px solid #ef4444;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <h1>🔐 Biometric Login</h1>
+        <div class="subtitle">Secure face verification</div>
+        
+        <div id="status" class="status pending">
+            Please complete facial verification to log in...
+        </div>
+        
+        <div id="authid-container"></div>
+    </div>
+
+    <script>
+        console.log('🔐 AuthID Biometric Login - Plain JS Version');
+        
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const operationId = urlParams.get('operationId');
+        const secret = urlParams.get('secret');
+        const baseUrl = urlParams.get('baseUrl') || 'https://id-uat.authid.ai';
+        
+        console.log('Operation ID:', operationId);
+        console.log('Secret:', secret ? '***' : 'missing');
+        console.log('Base URL:', baseUrl);
+        
+        const container = document.getElementById('authid-container');
+        const statusDiv = document.getElementById('status');
+        
+        if (!operationId || !secret) {
+            container.innerHTML = `
+                <div class="error-message">
+                    <strong>Missing Parameters</strong><br>
+                    Operation ID and Secret are required for verification.<br>
+                    Please restart the login process from the BBMS app.
+                </div>
+            `;
+        } else {
+            // BIOMETRIC LOGIN COMPLETION STRATEGY (same as enrollment):
+            // PRIMARY: Listen for 'authid:page' message with pageName='verifiedPage'
+            // BACKUP: Poll AuthID's API endpoint every 2 seconds
+            
+            // Create AuthID web component
+            const authidURL = `${baseUrl}/?OperationId=${operationId}&OneTimeSecret=${secret}`;
+            console.log('📋 AuthID Verification URL:', authidURL);
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Create component
+            const authidElement = document.createElement('authid-web-component');
+            authidElement.setAttribute('url', authidURL);
+            authidElement.style.width = '100%';
+            authidElement.style.height = '500px';
+            
+            // Listen for load event
+            authidElement.addEventListener('load', () => {
+                console.log('🎬 AuthID component loaded successfully');
+                startPollingForCompletion();
+            });
+            
+            // Listen for messages from AuthID (PRIMARY)
+            window.addEventListener('message', async (event) => {
+                console.log('📨 Message received:', event.data);
+                
+                // AuthID sends: {type: 'authid:page', pageName: 'verifiedPage', success: true}
+                if (event.data && event.data.type === 'authid:page' && 
+                    event.data.pageName === 'verifiedPage' && event.data.success === true) {
+                    console.log('✅ AuthID verification completed! Received verifiedPage confirmation');
+                    console.log('🎯 Trusting web component (AuthID UAT API has sync delays)');
+                    
+                    stopPollingForCompletion();
+                    await completeLogin();
+                    return;
+                }
+                
+                // Also detect liveness completion
+                if (event.data && event.data.type === 'authid:control:flng' && 
+                    event.data.params && event.data.params.message === 'LIVENESS_FINISHED') {
+                    console.log('📸 Liveness check finished - waiting for final verification...');
+                }
+            });
+            
+            // Append component
+            container.appendChild(authidElement);
+            console.log('✅ AuthID component added to page');
+        }
+        
+        // Polling mechanism (BACKUP)
+        let pollingInterval = null;
+        let pollCount = 0;
+        const MAX_POLLS = 60; // 60 polls * 2 seconds = 2 minutes max (shorter for login)
+        
+        function startPollingForCompletion() {
+            console.log('🔄 Starting status polling every 2 seconds...');
+            
+            checkOperationStatus();
+            
+            pollingInterval = setInterval(() => {
+                pollCount++;
+                console.log(`🔍 Poll #${pollCount}: Checking login status...`);
+                
+                if (pollCount >= MAX_POLLS) {
+                    console.warn('⏰ Max polling attempts reached');
+                    stopPollingForCompletion();
+                    showError('Verification timeout. Please try again.');
+                    return;
+                }
+                
+                checkOperationStatus();
+            }, 2000);
+        }
+        
+        function stopPollingForCompletion() {
+            if (pollingInterval) {
+                console.log('⏹️ Stopping status polling');
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                pollCount = 0;
+            }
+        }
+        
+        async function checkOperationStatus() {
+            try {
+                const apiUrl = `${window.location.protocol}//${window.location.hostname}:3001/api/biometric/login/status/${operationId}`;
+                console.log(`🔗 Checking status at: ${apiUrl}`);
+                
+                const response = await fetch(apiUrl, { method: 'GET' });
+                const data = await response.json();
+                
+                console.log(`📊 Status: ${data.status} (state: ${data.state}, result: ${data.result})`);
+                
+                if (data.status === 'completed') {
+                    console.log('✅ Verification completed via polling!');
+                    stopPollingForCompletion();
+                    await completeLogin();
+                } else if (data.status === 'failed') {
+                    console.log('❌ Verification failed');
+                    stopPollingForCompletion();
+                    showError('Biometric verification failed. Face did not match.');
+                } else if (data.status === 'expired') {
+                    console.log('⏰ Verification expired');
+                    stopPollingForCompletion();
+                    showError('Verification session expired. Please try again.');
+                }
+            } catch (error) {
+                console.error('❌ Error checking status:', error);
+            }
+        }
+        
+        async function completeLogin() {
+            try {
+                statusDiv.className = 'status verifying';
+                statusDiv.textContent = 'Verifying your identity...';
+                
+                console.log('📤 Completing login for operation:', operationId);
+                
+                const response = await fetch(
+                    `${window.location.protocol}//${window.location.hostname}:3001/api/biometric/login/complete/${operationId}`,
+                    { 
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+                
+                const data = await response.json();
+                console.log('📨 Login response:', data);
+                
+                if (response.ok && data.success && data.token) {
+                    console.log('✅ Login successful!');
+                    showSuccess(data.token, data.user);
+                } else {
+                    console.error('❌ Login failed:', data);
+                    showError(data.message || 'Login failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('❌ Error completing login:', error);
+                showError('Connection error. Please try again.');
+            }
+        }
+        
+        function showSuccess(token, user) {
+            console.log('🎉 Showing success screen');
+            
+            const appContainer = document.getElementById('app-container');
+            appContainer.innerHTML = `
+                <div class="card">
+                    <div style="font-size: 64px; margin-bottom: 16px;">✅</div>
+                    <h2 style="color: #10b981; margin-bottom: 8px;">Login Successful!</h2>
+                    <div class="welcome-text">Welcome back, ${user.name}!</div>
+                    
+                    <div class="user-info">
+                        <div class="user-info-item">
+                            <span class="user-info-label">Email:</span>
+                            <span class="user-info-value">${user.email}</span>
+                        </div>
+                        <div class="user-info-item">
+                            <span class="user-info-label">Department:</span>
+                            <span class="user-info-value">${user.department || 'N/A'}</span>
+                        </div>
+                        <div class="user-info-item">
+                            <span class="user-info-label">Role:</span>
+                            <span class="user-info-value">${user.role || 'User'}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="status success">
+                        Biometric authentication confirmed
+                    </div>
+                    
+                    <p style="color: #6b7280; margin-top: 16px;">
+                        Redirecting to app...
+                    </p>
+                    
+                    <div class="spinner"></div>
+                </div>
+            `;
+            
+            // Store token for debugging (in production, remove this)
+            console.log('🔑 JWT Token (DO NOT LOG IN PRODUCTION):', token.substring(0, 20) + '...');
+            
+            // Redirect to iOS app after 2 seconds
+            setTimeout(() => {
+                console.log('🚀 Redirecting to iOS app...');
+                
+                // Option 1: URL scheme (recommended)
+                const redirectUrl = `bbms://login?token=${encodeURIComponent(token)}`;
+                window.location.href = redirectUrl;
+                
+                // Option 2: If URL scheme fails, use JavaScript bridge
+                setTimeout(() => {
+                    if (window.webkit?.messageHandlers?.loginSuccess) {
+                        console.log('📱 Using WebKit message handler');
+                        window.webkit.messageHandlers.loginSuccess.postMessage({ 
+                            token, 
+                            user 
+                        });
+                    }
+                }, 500);
+                
+            }, 2000);
+        }
+        
+        function showError(message) {
+            console.log('❌ Showing error:', message);
+            
+            const appContainer = document.getElementById('app-container');
+            appContainer.innerHTML = `
+                <div class="card">
+                    <div style="font-size: 64px; margin-bottom: 16px;">❌</div>
+                    <h2 style="color: #ef4444; margin-bottom: 16px;">Verification Failed</h2>
+                    
+                    <div class="error-message">
+                        ${message}
+                    </div>
+                    
+                    <p style="color: #6b7280; margin-top: 16px;">
+                        Please close this window and try again from the app.
+                    </p>
+                    
+                    <button onclick="window.close()">Close Window</button>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

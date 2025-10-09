@@ -747,6 +747,37 @@ class AuthIDService {
       throw new Error(`Status check failed: ${errorMessage}`);
     }
   }
+
+  /**
+   * Initiate biometric login/verification
+   * For now, we'll use the same enrollment flow and let the user re-enroll
+   * In production, you'd want to configure proper verification operations
+   */
+  async initiateBiometricLogin(userId, userData = {}) {
+    try {
+      logger.info('🔐 Initiating biometric login (using enrollment operation)', { userId });
+
+      // WORKAROUND: Since we can't find the correct verification operation,
+      // we'll use EnrollBioCredential which will fail if already enrolled.
+      // The proper solution is to configure transaction templates in AuthID portal
+      // or contact AuthID support to enable verification operations.
+      
+      // For now, return an error with instructions
+      throw new Error(
+        'Biometric login via AuthID requires configuration of transaction templates. ' +
+        'Please contact AuthID support to enable "Verify_Identity" or similar verification templates ' +
+        'for your UAT environment. Alternatively, implement password-based login with optional biometric enrollment.'
+      );
+
+    } catch (error) {
+      logger.error('❌ Failed to initiate AuthID login', { 
+        error: error.message,
+        userId 
+      });
+      
+      throw new Error(`AuthID login initiation failed: ${error.message}`);
+    }
+  }
 }
 
 // Export a singleton instance

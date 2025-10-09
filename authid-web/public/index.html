@@ -110,6 +110,21 @@
                 </div>
             `;
         } else {
+            // ENROLLMENT COMPLETION STRATEGY:
+            // We use TWO methods to detect when AuthID enrollment completes:
+            // 
+            // 1. PRIMARY: Listen for 'authid:page' message with pageName='verifiedPage'
+            //    - AuthID's web component reliably sends this when verification succeeds
+            //    - This is INSTANT and trustworthy
+            //
+            // 2. BACKUP: Poll AuthID's API endpoint every 2 seconds
+            //    - Checks /v2/operations/{operationId} for state=1 (Completed)
+            //    - NOTE: AuthID UAT API has sync issues - can return 404 for 2+ minutes
+            //    - after web shows success, so this is just a fallback
+            //
+            // The PRIMARY method (message listener) will trigger completion immediately
+            // when user completes verification. The BACKUP polling serves as a safety net.
+            
             // Try different AuthID URL formats
             // Option 1: Web interface with query params
             const authidURL = `${baseUrl}/?OperationId=${operationId}&OneTimeSecret=${secret}`;
@@ -130,18 +145,43 @@
             // Listen for load event
             authidElement.addEventListener('load', () => {
                 console.log('🎬 AuthID component loaded successfully');
+                // Start polling for completion after component loads
+                startPollingForCompletion();
             });
             
             // Listen for messages from the iframe (AuthID might send completion events)
-            window.addEventListener('message', (event) => {
+            window.addEventListener('message', async (event) => {
                 console.log('📨 Message received:', event.data);
                 
-                // Check if it's a completion message
+                // AuthID sends: {type: 'authid:page', pageName: 'verifiedPage', success: true}
+                if (event.data && event.data.type === 'authid:page' && 
+                    event.data.pageName === 'verifiedPage' && event.data.success === true) {
+                    console.log('✅ AuthID verification completed! Received verifiedPage confirmation');
+                    console.log('🎯 Trusting web component (AuthID UAT API has sync delays)');
+                    
+                    // Stop polling and mark complete based on web component
+                    // Note: AuthID UAT API may return 404 for minutes after web shows success
+                    stopPollingForCompletion();
+                    await markEnrollmentComplete();
+                    showSuccess();
+                    return;
+                }
+                
+                // AuthID sends: {type: 'authid:control:flng', params: {message: 'LIVENESS_FINISHED'}}
+                if (event.data && event.data.type === 'authid:control:flng' && 
+                    event.data.params && event.data.params.message === 'LIVENESS_FINISHED') {
+                    console.log('📸 Liveness check finished - waiting for final verification...');
+                }
+                
+                // Legacy/fallback completion checks
                 if (event.data && (event.data.status === 'completed' || event.data.type === 'success')) {
-                    console.log('✅ Enrollment completed!');
+                    console.log('✅ Enrollment completed via message event!');
+                    stopPollingForCompletion();
+                    await markEnrollmentComplete();
                     showSuccess();
                 } else if (event.data && (event.data.status === 'failed' || event.data.type === 'error')) {
                     console.log('❌ Enrollment failed:', event.data);
+                    stopPollingForCompletion();
                     showError(event.data.message || 'Enrollment failed');
                 }
             });
@@ -150,15 +190,89 @@
             container.appendChild(authidElement);
             console.log('✅ AuthID component added to page');
             
-            // After 30 seconds, check if still processing and show alternative
-            setTimeout(() => {
-                console.log('⏰ 30 seconds elapsed, checking status...');
-                // If still showing "one moment please", provide option to continue
-                if (container.contains(authidElement)) {
-                    console.log('ℹ️ Still processing, will poll backend for status');
-                    checkEnrollmentStatus();
+            console.log('⏰ Will poll AuthID status to detect completion...');
+        }
+        
+        let pollingInterval = null;
+        let pollCount = 0;
+        const MAX_POLLS = 120; // 120 polls * 2 seconds = 4 minutes max
+        
+        function startPollingForCompletion() {
+            console.log('🔄 Starting status polling every 2 seconds...');
+            
+            // Poll immediately, then every 2 seconds
+            checkOperationStatus();
+            
+            pollingInterval = setInterval(() => {
+                pollCount++;
+                console.log(`🔍 Poll #${pollCount}: Checking operation status...`);
+                
+                if (pollCount >= MAX_POLLS) {
+                    console.warn('⏰ Max polling attempts reached, stopping...');
+                    stopPollingForCompletion();
+                    return;
                 }
-            }, 30000);
+                
+                checkOperationStatus();
+            }, 2000); // Poll every 2 seconds
+        }
+        
+        function stopPollingForCompletion() {
+            if (pollingInterval) {
+                console.log('⏹️ Stopping status polling');
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                pollCount = 0;
+            }
+        }
+        
+        async function checkOperationStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const operationId = urlParams.get('operationId');
+            
+            if (!operationId) {
+                console.error('❌ No operation ID found');
+                return;
+            }
+            
+            try {
+                // Build API URL - use same protocol and host, just different port
+                const apiUrl = `${window.location.protocol}//${window.location.hostname}:3001/api/biometric/operation/${operationId}/status`;
+                console.log(`🔗 Checking status at: ${apiUrl}`);
+                
+                const response = await fetch(apiUrl, { 
+                    method: 'GET',
+                    // Add credentials to help with CORS
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log(`📊 Status: ${data.status} (state: ${data.state}, result: ${data.result}, completedAt: ${data.completedAt ? 'YES' : 'NO'})`);
+                    
+                    if (data.status === 'completed') {
+                        console.log('✅ Operation completed! Stopping polling and showing success.');
+                        stopPollingForCompletion();
+                        // Call the complete endpoint to mark in our system
+                        await markEnrollmentComplete();
+                        showSuccess();
+                    } else if (data.status === 'failed') {
+                        console.log('❌ Operation failed');
+                        stopPollingForCompletion();
+                        showError('Biometric verification failed');
+                    } else if (data.status === 'expired') {
+                        console.log('⏰ Operation expired');
+                        stopPollingForCompletion();
+                        showError('Enrollment session expired. Please try again.');
+                    }
+                    // else: still pending, continue polling
+                } else {
+                    console.warn(`⚠️ Status check returned ${response.status}`);
+                }
+            } catch (error) {
+                console.error('❌ Error checking operation status:', error);
+                // Don't stop polling on error, might be temporary
+            }
         }
         
         function showSuccess() {
@@ -239,8 +353,8 @@
             
             console.log('📤 Marking enrollment as complete for operation:', operationId);
             
-            // Build the URL - auth service is now on HTTPS too
-            const completeUrl = `https://${window.location.hostname}:3001/api/biometric/operation/${operationId}/complete`;
+            // Build the URL - use same protocol as current page
+            const completeUrl = `${window.location.protocol}//${window.location.hostname}:3001/api/biometric/operation/${operationId}/complete`;
             console.log('🔗 Complete endpoint URL:', completeUrl);
             
             try {
@@ -282,64 +396,6 @@
                 </div>
             `;
             container.style.padding = '20px';
-        }
-        
-        async function checkEnrollmentStatus() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const operationId = urlParams.get('operationId');
-            
-            if (!operationId) {
-                console.error('❌ No operation ID found');
-                return;
-            }
-            
-            try {
-                console.log('🔍 Checking enrollment status for operation:', operationId);
-                
-                // First, try to mark it as complete (in case the user completed capture)
-                const completeResponse = await fetch(
-                    `${window.location.origin.replace('3002', '3001')}/api/biometric/operation/${operationId}/complete`,
-                    { 
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    }
-                );
-                
-                if (completeResponse.ok) {
-                    console.log('✅ Enrollment marked as complete');
-                    showSuccess();
-                    return;
-                }
-                
-                // If marking complete failed, try to check status
-                const response = await fetch(
-                    `${window.location.origin.replace('3002', '3001')}/api/biometric/operation/${operationId}/status`
-                );
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('📊 Status response:', data);
-                    
-                    if (data.status === 'completed') {
-                        showSuccess();
-                    } else if (data.status === 'failed') {
-                        showError(data.message || 'Enrollment verification failed');
-                    } else {
-                        // Still processing, assume success after capture
-                        console.log('⏳ Still processing, assuming success...');
-                        showSuccess();
-                    }
-                } else {
-                    // Can't verify, but selfie was captured, so likely successful
-                    console.log('⚠️ Could not verify status, assuming success');
-                    showSuccess();
-                }
-            } catch (error) {
-                console.error('❌ Error checking status:', error);
-                // Can't verify, but selfie was captured, so likely successful
-                console.log('⚠️ Error checking status, assuming success');
-                showSuccess();
-            }
         }
     </script>
 </body>

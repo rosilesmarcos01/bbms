@@ -211,6 +211,22 @@ class UserService {
   }
 
   /**
+   * Find user by login operation ID
+   * Used during biometric login to identify which user is logging in
+   */
+  async getUserByLoginOperation(operationId) {
+    // Find the user that has this pending login operation
+    for (const [userId, user] of this.users) {
+      if (user.pending_login_operation === operationId) {
+        logger.info(`🔍 Found user by login operation ${operationId}: ${user.email}`);
+        return user;
+      }
+    }
+    logger.warn(`⚠️ No user found with login operation: ${operationId}`);
+    return null;
+  }
+
+  /**
    * Find user by biometric template
    * In production, this would query a proper database
    */
