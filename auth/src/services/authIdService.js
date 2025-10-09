@@ -628,33 +628,43 @@ class AuthIDService {
           tag: status.Tag
         };
       } catch (opError) {
-        // If operation not found, try transaction endpoint
+        // If operation not found, try transaction endpoint with /status
         if (opError.response?.status === 404) {
-          logger.info('🔄 Operation not found, trying transaction endpoint', { operationId });
+          logger.info('🔄 Operation not found, trying transaction /status endpoint', { operationId });
           
           const txResponse = await axios.get(
-            `${this.transactionURL}/v2/transactions/${operationId}`,
+            `${this.transactionURL}/v2/transactions/${operationId}/status`,
             { headers: await this.getAuthHeaders() }
           );
 
           const txStatus = txResponse.data;
           
+          // Map Status field (1=Authorized, 3=Expired) to state field
+          let mappedState = 'unknown';
+          if (txStatus.Status === 1) {
+            mappedState = 'completed';
+          } else if (txStatus.Status === 3) {
+            mappedState = 'expired';
+          }
+          
           logger.info('✅ Transaction status retrieved', { 
             transactionId: operationId,
-            state: txStatus.State,
-            result: txStatus.Result 
+            status: txStatus.Status,
+            message: txStatus.Message,
+            mappedState,
+            fullResponse: txStatus
           });
 
           return {
             success: true,
             operationId: txStatus.TransactionId,
             transactionId: txStatus.TransactionId,
-            state: txStatus.State,
-            result: txStatus.Result,
-            accountNumber: txStatus.AccountNumber,
-            createdAt: txStatus.CreatedAt,
-            completedAt: txStatus.CompletedAt,
-            tag: txStatus.Tag,
+            state: mappedState,
+            result: txStatus.Status === 1 ? 'Success' : 'Failed',
+            status: txStatus.Status,
+            message: txStatus.Message,
+            startDate: txStatus.StartDate,
+            endDate: txStatus.EndDate,
             isTransaction: true
           };
         }
@@ -827,14 +837,15 @@ class AuthIDService {
         fullResponse: transactionResponse.data
       });
       
-      // Construct authentication URL pointing to our hosted React component page
-      const authWebUrl = process.env.AUTHID_WEB_URL || 'http://localhost:3002';
-      const authUrl = `${authWebUrl}?transactionId=${transactionId}&secret=${oneTimeSecret}&baseUrl=${encodeURIComponent('https://id-uat.authid.ai')}&mode=authentication`;
+      // For authentication transactions, use AuthID URL directly (not our web component)
+      // Based on demo: https://id-uat.authid.ai/?t=<TransactionId>&s=<OneTimeSecret>
+      const authUrl = `https://id-uat.authid.ai/?t=${transactionId}&s=${oneTimeSecret}`;
       
       logger.info('✅ Biometric authentication transaction created', { 
         transactionId,
         userId,
-        authUrl
+        authUrl,
+        note: 'Using AuthID direct URL for authentication (not web component)'
       });
 
       return {

@@ -324,9 +324,39 @@ router.get('/biometric-login/poll/:operationId', authLimiter, async (req, res) =
     // Check operation status
     const status = await authIdService.checkOperationStatus(operationId);
 
-    // State: 0=Pending, 1=Completed, 2=Failed, 3=Expired
-    // Result: 0=None, 1=Success, 2=Failure
+    // Handle both numeric states (operations) and string states (transactions)
+    // Numeric: State: 0=Pending, 1=Completed, 2=Failed, 3=Expired
+    // String: state: 'completed', 'expired', 'unknown'
+    // Result: 0=None, 1=Success, 2=Failure (numeric) or 'Success'/'Failed' (string)
     
+    const stateStr = typeof status.state === 'string' ? status.state.toLowerCase() : null;
+    const resultStr = typeof status.result === 'string' ? status.result.toLowerCase() : null;
+    
+    // Check for string state (from transactions)
+    if (stateStr === 'completed' && (resultStr === 'success' || status.status === 1)) {
+      // Transaction completed successfully
+      return res.json({
+        status: 'completed',
+        message: 'Authentication completed successfully',
+        operationId
+      });
+    } else if (stateStr === 'expired' || status.state === 3) {
+      // Expired
+      return res.json({
+        status: 'expired',
+        message: 'Authentication session expired',
+        operationId
+      });
+    } else if (stateStr === 'unknown') {
+      // Unknown state
+      return res.json({
+        status: 'pending',
+        message: 'Authentication status unknown - still processing',
+        operationId
+      });
+    }
+    
+    // Check for numeric state (from operations)
     if (status.state === 0) {
       // Still pending
       return res.json({
