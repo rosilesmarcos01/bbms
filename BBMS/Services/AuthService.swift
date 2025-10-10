@@ -325,6 +325,9 @@ class AuthService: ObservableObject {
         // Store tokens securely
         keychain.saveAccessToken(response.accessToken)
         
+        // Store user email for biometric login after logout
+        keychain.save(response.user.email, forKey: "last_user_email")
+        
         // Update user service with authenticated user
         UserService.shared.setAuthenticatedUser(response.user)
     }

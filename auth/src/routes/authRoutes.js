@@ -6,9 +6,25 @@ const rateLimit = require('express-rate-limit');
 
 const authIdService = require('../services/authIdService');
 const userService = require('../services/userService');
+const jwtService = require('../services/jwtService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+
+// In-memory cache for operation-to-email mapping (24 hour expiry)
+// In production, use Redis or similar
+const operationEmailCache = new Map();
+
+// Clean up expired operations every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [operationId, data] of operationEmailCache.entries()) {
+    if (now > data.expiresAt) {
+      operationEmailCache.delete(operationId);
+      logger.info(`🧹 Cleaned up expired operation: ${operationId}`);
+    }
+  }
+}, 60 * 60 * 1000); // Run every hour
 
 // Rate limiting for auth endpoints
 const authLimiter = rateLimit({
@@ -283,6 +299,14 @@ router.post('/biometric-login/initiate', authLimiter, [
       role: user.role
     });
 
+    // Store operation-to-email mapping for token issuance
+    // Expires in 5 minutes (same as AuthID operation)
+    operationEmailCache.set(authOperation.operationId, {
+      email: user.email,
+      userId: user.id,
+      expiresAt: Date.now() + (5 * 60 * 1000)
+    });
+
     logger.info(`🔐 Biometric login initiated for: ${email}`, {
       operationId: authOperation.operationId
     });
@@ -334,14 +358,75 @@ router.get('/biometric-login/poll/:operationId', authLimiter, async (req, res) =
     
     // Check for string state (from transactions)
     if (stateStr === 'completed' && (resultStr === 'success' || status.status === 1)) {
-      // Transaction completed successfully
-      return res.json({
-        status: 'completed',
-        message: 'Authentication completed successfully',
-        operationId
-      });
+      // Transaction completed successfully - issue JWT tokens
+      
+      // Get user email from operation cache
+      const operationData = operationEmailCache.get(operationId);
+      
+      if (!operationData) {
+        logger.warn('⚠️ Operation data not found in cache - may have expired');
+        return res.json({
+          status: 'completed',
+          message: 'Authentication completed but session expired. Please initiate login again.',
+          operationId,
+          code: 'SESSION_EXPIRED'
+        });
+      }
+      
+      try {
+        // Get user from database
+        const user = await userService.getUserByEmail(operationData.email);
+        
+        if (!user) {
+          logger.warn(`⚠️ User not found for email: ${operationData.email}`);
+          return res.status(404).json({
+            error: 'User not found',
+            code: 'USER_NOT_FOUND',
+            operationId
+          });
+        }
+        
+        // Update last login
+        await userService.updateLastLogin(user.id);
+        
+        // Generate JWT tokens using the new JWT service
+        const tokens = jwtService.generateTokens(user);
+        
+        // Clean up the operation from cache
+        operationEmailCache.delete(operationId);
+        
+        logger.info(`✅ Issued JWT tokens for biometric login: ${user.email}`);
+        
+        return res.json({
+          status: 'completed',
+          message: 'Authentication completed successfully',
+          operationId,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresIn: tokens.expiresIn,
+          tokenType: tokens.tokenType,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            accessLevel: user.accessLevel,
+            department: user.department
+          }
+        });
+        
+      } catch (error) {
+        logger.error('❌ Failed to issue tokens after biometric auth:', error.message);
+        return res.status(500).json({
+          error: 'Failed to issue authentication tokens',
+          code: 'TOKEN_GENERATION_ERROR',
+          message: error.message
+        });
+      }
     } else if (stateStr === 'expired' || status.state === 3) {
-      // Expired
+      // Expired - clean up cache
+      operationEmailCache.delete(operationId);
+      
       return res.json({
         status: 'expired',
         message: 'Authentication session expired',

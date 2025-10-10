@@ -166,60 +166,119 @@ class BiometricAuthService: ObservableObject {
     
     // MARK: - Perform Biometric Authentication
     func authenticateWithBiometrics() async throws -> BiometricAuthResult {
-        // Step 1: Local biometric authentication
-        let context = LAContext()
-        var error: NSError?
-        
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            throw BiometricError.biometricNotAvailable
+        // Step 1: Get current user email from AuthService or Keychain
+        guard let userEmail = await getCurrentUserEmail() else {
+            throw BiometricError.userNotFound
         }
         
-        let reason = "Authenticate to access BBMS"
-        let success = try await context.evaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
-            localizedReason: reason
-        )
+        print("🔐 Starting biometric authentication for: \(userEmail)")
         
-        guard success else {
+        // Step 2: Initiate biometric login with backend
+        let initiateResponse = try await initiateBiometricLogin(email: userEmail)
+        
+        print("✅ Received AuthID URL: \(initiateResponse.authIdUrl)")
+        print("📋 Operation ID: \(initiateResponse.operationId)")
+        
+        // Step 3: Open Safari for user to complete face scan
+        await openAuthIDUrl(initiateResponse.authIdUrl)
+        
+        // Step 4: Poll for authentication result
+        print("⏳ Polling for authentication result...")
+        let pollResponse = try await pollForAuthenticationResult(operationId: initiateResponse.operationId)
+        
+        if pollResponse.status == "completed" {
+            print("✅ Biometric authentication completed successfully")
+            
+            // Return result with tokens
+            return BiometricAuthResult(
+                success: true,
+                user: pollResponse.user,
+                verification: nil,
+                tokens: pollResponse.tokens
+            )
+        } else if pollResponse.status == "failed" {
+            print("❌ Biometric authentication failed")
+            throw BiometricError.authenticationFailed
+        } else {
+            print("⚠️ Biometric authentication timed out")
             throw BiometricError.authenticationFailed
         }
+    }
+    
+    // MARK: - Initiate Biometric Login
+    private func initiateBiometricLogin(email: String) async throws -> InitiateLoginResponse {
+        let request = InitiateLoginRequest(email: email)
         
-        // Step 2: Generate biometric verification data for AuthID
-        let biometricTemplate = try await generateBiometricTemplate(context: context)
-        
-        let verificationData = AuthIDBiometricData(
-            biometric_template: biometricTemplate,
-            verification_method: getBiometricType(context: context),
-            device_info: DeviceInfo(
-                device_id: UIDevice.current.identifierForVendor?.uuidString ?? "unknown",
-                platform: "iOS",
-                app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-            ),
-            timestamp: Date(),
-            location_context: LocationContext(
-                access_point: "mobile_app",
-                building_id: "bbms-main-building"
-            )
-        )
-        
-        // Step 3: Send to AuthID for verification
-        let loginRequest = AuthIDBiometricLoginRequest(
-            verificationData: verificationData,
-            accessPoint: "mobile_app"
-        )
-        
-        let response: BiometricAuthResponse = try await performAPIRequest(
-            endpoint: "/auth/biometric-login",
+        let response: InitiateLoginResponse = try await performAPIRequest(
+            endpoint: "/auth/biometric-login/initiate",
             method: "POST",
-            body: loginRequest
+            body: request
         )
         
-        return BiometricAuthResult(
-            success: response.success,
-            user: response.user,
-            verification: response.verification,
-            tokens: response.tokens
-        )
+        return response
+    }
+    
+    // MARK: - Open AuthID URL in Safari
+    @MainActor
+    private func openAuthIDUrl(_ urlString: String) async {
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid AuthID URL: \(urlString)")
+            return
+        }
+        
+        print("🌐 Opening Safari for face scan...")
+        UIApplication.shared.open(url, options: [:]) { success in
+            if success {
+                print("✅ Safari opened successfully")
+            } else {
+                print("❌ Failed to open Safari")
+            }
+        }
+        
+        // Wait a moment for Safari to open before starting to poll
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+    }
+    
+    // MARK: - Poll for Authentication Result
+    private func pollForAuthenticationResult(operationId: String) async throws -> PollLoginResponse {
+        let maxAttempts = 60 // 2 minutes max (60 attempts x 2 seconds)
+        var attempt = 0
+        
+        while attempt < maxAttempts {
+            attempt += 1
+            
+            do {
+                let response: PollLoginResponse = try await performAPIRequest(
+                    endpoint: "/auth/biometric-login/poll/\(operationId)",
+                    method: "GET",
+                    body: nil as String?
+                )
+                
+                print("📊 Poll attempt \(attempt): status=\(response.status)")
+                
+                if response.status == "completed" {
+                    return response
+                } else if response.status == "failed" {
+                    throw BiometricError.authenticationFailed
+                }
+                
+                // Wait 2 seconds before next poll
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                
+            } catch {
+                // If we get a network error, wait and retry
+                print("⚠️ Poll attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                if attempt >= maxAttempts {
+                    throw error
+                }
+                
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+        
+        // If we've exhausted all attempts, throw timeout error
+        throw BiometricError.authenticationFailed
     }
     
     // MARK: - Generate Biometric Template (Secure Implementation)
@@ -259,6 +318,16 @@ class BiometricAuthService: ObservableObject {
     private func getCurrentUserId() async -> String? {
         // Get current user ID from AuthService or storage
         return AuthService.shared.currentUser?.id.uuidString
+    }
+    
+    private func getCurrentUserEmail() async -> String? {
+        // First try to get from current user
+        if let email = AuthService.shared.currentUser?.email {
+            return email
+        }
+        
+        // If no current user, try to get from keychain (for logout/login scenario)
+        return keychain.get(forKey: "last_user_email")
     }
     
     private func getCurrentUser() async -> User? {
@@ -386,6 +455,23 @@ struct BiometricEnrollmentAPIResponse: Codable {
     let message: String
     let enrollment: BiometricEnrollmentResponse
     let alreadyEnrolled: Bool?
+}
+
+// MARK: - Biometric Login Request/Response Models
+
+struct InitiateLoginRequest: Codable {
+    let email: String
+}
+
+struct InitiateLoginResponse: Codable {
+    let operationId: String
+    let authIdUrl: String
+}
+
+struct PollLoginResponse: Codable {
+    let status: String // "pending", "completed", "failed"
+    let user: User?
+    let tokens: AuthTokens?
 }
 
 struct BiometricEnrollmentResponse: Codable {
