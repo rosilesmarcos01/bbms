@@ -9,12 +9,12 @@ struct NotificationSettingsView: View {
             Form {
                 Section("General Notifications") {
                     Toggle("Master Switch", isOn: Binding(
-                        get: { userService.currentUser.preferences.notificationsEnabled },
+                        get: { userService.currentUser.preferences?.notificationsEnabled ?? false },
                         set: { _ in userService.toggleNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
                     
-                    if !userService.currentUser.preferences.notificationsEnabled {
+                    if !(userService.currentUser.preferences?.notificationsEnabled ?? false) {
                         Text("All notifications are disabled")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -29,8 +29,8 @@ struct NotificationSettingsView: View {
                             description: "Critical system notifications and alerts",
                             icon: "exclamationmark.triangle.fill",
                             iconColor: .red,
-                            isEnabled: userService.currentUser.preferences.alertsEnabled,
-                            isDisabled: !userService.currentUser.preferences.notificationsEnabled
+                            isEnabled: userService.currentUser.preferences?.alertsEnabled ?? false,
+                            isDisabled: !(userService.currentUser.preferences?.notificationsEnabled ?? false)
                         ) {
                             userService.toggleAlerts()
                         }
@@ -41,7 +41,7 @@ struct NotificationSettingsView: View {
                             icon: "sensor.tag.radiowaves.forward.fill",
                             iconColor: .blue,
                             isEnabled: true, // This would be another preference
-                            isDisabled: !userService.currentUser.preferences.notificationsEnabled
+                            isDisabled: !(userService.currentUser.preferences?.notificationsEnabled ?? false)
                         ) {
                             // Toggle device notifications
                         }
@@ -52,7 +52,7 @@ struct NotificationSettingsView: View {
                             icon: "location.fill",
                             iconColor: .green,
                             isEnabled: true, // This would be another preference
-                            isDisabled: !userService.currentUser.preferences.notificationsEnabled
+                            isDisabled: !(userService.currentUser.preferences?.notificationsEnabled ?? false)
                         ) {
                             // Toggle zone notifications
                         }
@@ -63,7 +63,7 @@ struct NotificationSettingsView: View {
                             icon: "wrench.and.screwdriver.fill",
                             iconColor: .orange,
                             isEnabled: true, // This would be another preference
-                            isDisabled: !userService.currentUser.preferences.notificationsEnabled
+                            isDisabled: !(userService.currentUser.preferences?.notificationsEnabled ?? false)
                         ) {
                             // Toggle maintenance notifications
                         }
@@ -72,18 +72,18 @@ struct NotificationSettingsView: View {
                 
                 Section("Delivery Methods") {
                     Toggle("Push Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.pushNotifications },
+                        get: { userService.currentUser.preferences?.pushNotifications ?? false },
                         set: { _ in userService.togglePushNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
-                    .disabled(!userService.currentUser.preferences.notificationsEnabled)
+                    .disabled(!(userService.currentUser.preferences?.notificationsEnabled ?? false))
                     
                     Toggle("Email Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.emailNotifications },
+                        get: { userService.currentUser.preferences?.emailNotifications ?? false },
                         set: { _ in userService.toggleEmailNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
-                    .disabled(!userService.currentUser.preferences.notificationsEnabled)
+                    .disabled(!(userService.currentUser.preferences?.notificationsEnabled ?? false))
                 }
                 
                 Section("Quiet Hours") {
@@ -96,7 +96,7 @@ struct NotificationSettingsView: View {
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
-                    .opacity(userService.currentUser.preferences.notificationsEnabled ? 1.0 : 0.5)
+                    .opacity((userService.currentUser.preferences?.notificationsEnabled ?? false) ? 1.0 : 0.5)
                 }
             }
             .navigationTitle("Notifications")

@@ -255,16 +255,40 @@ class AuthService: ObservableObject {
     
     func getBiometricEnrollmentStatus() async -> BiometricEnrollmentStatus? {
         do {
+            print("🔍 AuthService: Getting biometric enrollment status...")
+            
             let response = try await performRequest(
                 endpoint: "/biometric/enrollment/status",
                 method: "GET",
                 requiresAuth: true
             ) as BiometricEnrollmentStatusResponse
             
+            print("📊 AuthService: Enrollment status received:")
+            print("  - enrollmentId: \(response.enrollment.enrollmentId)")
+            print("  - status: \(response.enrollment.status)")
+            print("  - completed: \(response.enrollment.status == "completed")")
+            
+            // IMPORTANT: Save to keychain if enrollment is completed!
+            if response.enrollment.status == "completed" {
+                print("✅ AuthService: Enrollment completed! Saving to keychain...")
+                KeychainService.shared.setBiometricEnrolled(true)
+                KeychainService.shared.setBiometricEnrollmentId(response.enrollment.enrollmentId)
+                
+                // Also update BiometricAuthService state
+                await MainActor.run {
+                    BiometricAuthService.shared.isEnrolled = true
+                }
+                
+                print("✅ AuthService: Enrollment saved to keychain")
+                print("🔍 Verifying keychain save:")
+                print("   - isBiometricEnrolled: \(KeychainService.shared.isBiometricEnrolled())")
+                print("   - enrollmentId: \(KeychainService.shared.getBiometricEnrollmentId() ?? "nil")")
+            }
+            
             return response.enrollment
             
         } catch {
-            print("Failed to get biometric enrollment status: \(error)")
+            print("❌ AuthService: Failed to get biometric enrollment status: \(error)")
             return nil
         }
     }

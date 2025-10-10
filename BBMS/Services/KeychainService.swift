@@ -35,7 +35,10 @@ class KeychainService {
     
     // MARK: - Generic Keychain Operations
     func save(_ value: String, forKey key: String) {
-        guard let data = value.data(using: .utf8) else { return }
+        guard let data = value.data(using: .utf8) else {
+            print("❌ KeychainService: Failed to convert value to data for key: \(key)")
+            return
+        }
         
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -51,7 +54,9 @@ class KeychainService {
         // Add new item
         let status = SecItemAdd(query as CFDictionary, nil)
         if status != errSecSuccess {
-            print("❌ Failed to save to keychain: \(status)")
+            print("❌ KeychainService: Failed to save '\(value)' for key '\(key)': SecItem status \(status)")
+        } else {
+            print("✅ KeychainService: Successfully saved '\(value)' for key '\(key)'")
         }
     }
     
@@ -70,9 +75,11 @@ class KeychainService {
         guard status == errSecSuccess,
               let data = result as? Data,
               let string = String(data: data, encoding: .utf8) else {
+            print("⚠️ KeychainService: Failed to get value for key '\(key)': SecItem status \(status)")
             return nil
         }
         
+        print("✅ KeychainService: Successfully retrieved '\(string)' for key '\(key)'")
         return string
     }
     

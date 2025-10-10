@@ -168,9 +168,9 @@ struct AccountView: View {
             
             StatCard(
                 title: "Status",
-                value: userService.currentUser.isActive ? "Active" : "Inactive",
-                icon: userService.currentUser.isActive ? "checkmark.circle" : "xmark.circle",
-                color: userService.currentUser.isActive ? .green : .red
+                value: (userService.currentUser.isActive ?? true) ? "Active" : "Inactive",
+                icon: (userService.currentUser.isActive ?? true) ? "checkmark.circle" : "xmark.circle",
+                color: (userService.currentUser.isActive ?? true) ? .green : .red
             )
         }
     }

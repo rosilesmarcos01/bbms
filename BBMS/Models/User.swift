@@ -9,12 +9,12 @@ struct User: Identifiable, Codable {
     var role: UserRole
     var profileImageName: String?
     var department: String
-    var joinDate: Date
-    var isActive: Bool
-    var preferences: UserPreferences
+    var joinDate: Date?  // ✅ Made optional - not always returned by backend
+    var isActive: Bool?  // ✅ Made optional - not always returned by backend
+    var preferences: UserPreferences?  // ✅ Made optional - not always returned by backend
     var accessLevel: AccessLevel
     var lastLoginAt: Date?
-    var createdAt: Date
+    var createdAt: Date?  // ✅ Made optional - not always returned by backend
     
     init(
         id: UUID = UUID(),
@@ -23,12 +23,12 @@ struct User: Identifiable, Codable {
         role: UserRole = .user,
         profileImageName: String? = nil,
         department: String = "General",
-        joinDate: Date = Date(),
-        isActive: Bool = true,
-        preferences: UserPreferences = UserPreferences(),
+        joinDate: Date? = Date(),
+        isActive: Bool? = true,
+        preferences: UserPreferences? = UserPreferences(),
         accessLevel: AccessLevel = .basic,
         lastLoginAt: Date? = nil,
-        createdAt: Date = Date()
+        createdAt: Date? = Date()
     ) {
         self.id = id
         self.name = name

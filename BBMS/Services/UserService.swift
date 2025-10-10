@@ -95,38 +95,52 @@ class UserService: ObservableObject {
     }
     
     func toggleNotifications() {
-        currentUser.preferences.notificationsEnabled.toggle()
+        ensurePreferencesExist()
+        currentUser.preferences?.notificationsEnabled.toggle()
         saveUserToStorage()
     }
     
     func toggleDarkMode() {
-        currentUser.preferences.darkModeEnabled.toggle()
+        ensurePreferencesExist()
+        currentUser.preferences?.darkModeEnabled.toggle()
         saveUserToStorage()
     }
     
     func toggleAlerts() {
-        currentUser.preferences.alertsEnabled.toggle()
+        ensurePreferencesExist()
+        currentUser.preferences?.alertsEnabled.toggle()
         saveUserToStorage()
     }
     
     func toggleEmailNotifications() {
-        currentUser.preferences.emailNotifications.toggle()
+        ensurePreferencesExist()
+        currentUser.preferences?.emailNotifications.toggle()
         saveUserToStorage()
     }
     
     func togglePushNotifications() {
-        currentUser.preferences.pushNotifications.toggle()
+        ensurePreferencesExist()
+        currentUser.preferences?.pushNotifications.toggle()
         saveUserToStorage()
     }
     
     func updateTemperatureUnit(_ unit: TemperatureUnit) {
-        currentUser.preferences.temperatureUnit = unit
+        ensurePreferencesExist()
+        currentUser.preferences?.temperatureUnit = unit
         saveUserToStorage()
     }
     
     func updateLanguage(_ language: String) {
-        currentUser.preferences.language = language
+        ensurePreferencesExist()
+        currentUser.preferences?.language = language
         saveUserToStorage()
+    }
+    
+    // Helper to ensure preferences exist (create defaults if nil from API)
+    private func ensurePreferencesExist() {
+        if currentUser.preferences == nil {
+            currentUser.preferences = UserPreferences()
+        }
     }
     
     // MARK: - Profile Image Management
@@ -165,14 +179,20 @@ class UserService: ObservableObject {
     
     // MARK: - Utility Methods
     func getFormattedJoinDate() -> String {
+        guard let joinDate = currentUser.joinDate else {
+            return "N/A"
+        }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
-        return formatter.string(from: currentUser.joinDate)
+        return formatter.string(from: joinDate)
     }
     
     func getYearsOfService() -> Int {
+        guard let joinDate = currentUser.joinDate else {
+            return 0
+        }
         let calendar = Calendar.current
-        let years = calendar.dateComponents([.year], from: currentUser.joinDate, to: Date()).year ?? 0
+        let years = calendar.dateComponents([.year], from: joinDate, to: Date()).year ?? 0
         return years
     }
 }

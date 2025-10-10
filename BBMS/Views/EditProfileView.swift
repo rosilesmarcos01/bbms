@@ -118,9 +118,9 @@ struct EditProfileView: View {
                         Spacer()
                         HStack {
                             Circle()
-                                .fill(userService.currentUser.isActive ? .green : .red)
+                                .fill((userService.currentUser.isActive ?? true) ? .green : .red)
                                 .frame(width: 8, height: 8)
-                            Text(userService.currentUser.isActive ? "Active" : "Inactive")
+                            Text((userService.currentUser.isActive ?? true) ? "Active" : "Inactive")
                                 .foregroundColor(.secondary)
                         }
                     }

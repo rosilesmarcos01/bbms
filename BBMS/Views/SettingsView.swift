@@ -10,31 +10,31 @@ struct SettingsView: View {
                 // Notification Settings
                 Section(header: Text("Notifications")) {
                     Toggle("Enable Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.notificationsEnabled },
+                        get: { userService.currentUser.preferences?.notificationsEnabled ?? false },
                         set: { _ in userService.toggleNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
                     
                     Toggle("Alert Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.alertsEnabled },
+                        get: { userService.currentUser.preferences?.alertsEnabled ?? false },
                         set: { _ in userService.toggleAlerts() }
                     ))
                     .tint(Color("BBMSGold"))
-                    .disabled(!userService.currentUser.preferences.notificationsEnabled)
+                    .disabled(!(userService.currentUser.preferences?.notificationsEnabled ?? false))
                     
                     Toggle("Email Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.emailNotifications },
+                        get: { userService.currentUser.preferences?.emailNotifications ?? false },
                         set: { _ in userService.toggleEmailNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
-                    .disabled(!userService.currentUser.preferences.notificationsEnabled)
+                    .disabled(!(userService.currentUser.preferences?.notificationsEnabled ?? false))
                     
                     Toggle("Push Notifications", isOn: Binding(
-                        get: { userService.currentUser.preferences.pushNotifications },
+                        get: { userService.currentUser.preferences?.pushNotifications ?? false },
                         set: { _ in userService.togglePushNotifications() }
                     ))
                     .tint(Color("BBMSGold"))
-                    .disabled(!userService.currentUser.preferences.notificationsEnabled)
+                    .disabled(!(userService.currentUser.preferences?.notificationsEnabled ?? false))
                 }
                 
                 // Developer Tools (for testing notifications)
@@ -66,13 +66,13 @@ struct SettingsView: View {
                 // Display Settings
                 Section(header: Text("Display")) {
                     Toggle("Dark Mode", isOn: Binding(
-                        get: { userService.currentUser.preferences.darkModeEnabled },
+                        get: { userService.currentUser.preferences?.darkModeEnabled ?? false },
                         set: { _ in userService.toggleDarkMode() }
                     ))
                     .tint(Color("BBMSGold"))
                     
                     Picker("Temperature Unit", selection: Binding(
-                        get: { userService.currentUser.preferences.temperatureUnit },
+                        get: { userService.currentUser.preferences?.temperatureUnit ?? .celsius },
                         set: { userService.updateTemperatureUnit($0) }
                     )) {
                         ForEach(TemperatureUnit.allCases, id: \.self) { unit in
@@ -85,7 +85,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Language")
                         Spacer()
-                        Text(userService.currentUser.preferences.language)
+                        Text(userService.currentUser.preferences?.language ?? "English")
                             .foregroundColor(.secondary)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12))
