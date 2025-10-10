@@ -118,9 +118,15 @@ class AuthService: ObservableObject {
                     keychain.saveRefreshToken(refreshToken)
                 }
                 
+                // Store user email for biometric login after logout
+                keychain.save(user.email, forKey: "last_user_email")
+                
                 await MainActor.run {
                     self.currentUser = user
                     self.isAuthenticated = true
+                    
+                    // Update user service with authenticated user (IMPORTANT!)
+                    UserService.shared.setAuthenticatedUser(user)
                 }
                 
                 print("✅ Biometric authentication successful via AuthID")

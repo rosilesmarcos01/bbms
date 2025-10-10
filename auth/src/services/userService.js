@@ -52,11 +52,23 @@ class UserService {
         name: 'Clay Perreault',
         email: 'clay@bbms.ai',
         password: '$2a$12$IWQerjq2TXe8PnKVJgmM0.kHRhAGwhQFwxEp6ElB17q.OuSd1vsJa', // password: admin123
-        department: 'Maintenance',
-        role: 'technician',
+        department: 'Dev',
+        role: 'user',
         accessLevel: 'standard',
         isActive: true,
         createdAt: new Date('2023-03-01'),
+        lastLoginAt: null
+      },
+      {
+        id: uuidv4(),
+        name: 'Valeria Cabrera',
+        email: 'valeria@bbms.ai',
+        password: '$2a$12$IWQerjq2TXe8PnKVJgmM0.kHRhAGwhQFwxEp6ElB17q.OuSd1vsJa', // password: admin123
+        department: 'UXUI',
+        role: 'user',
+        accessLevel: 'standard',
+        isActive: true,
+        createdAt: new Date('2023-04-01'),
         lastLoginAt: null
       }
     ];
