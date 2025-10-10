@@ -56,9 +56,16 @@ io.use(async (socket, next) => {
       return next(new Error('Authentication required'));
     }
 
-    // Verify token with auth service
+    // Verify token with auth service using custom axios with SSL support
     const axios = require('axios');
-    const response = await axios.get(`${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/api/auth/me`, {
+    const https = require('https');
+    const authServiceAxios = axios.create({
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false // Accept self-signed certificates in development
+      })
+    });
+    
+    const response = await authServiceAxios.get(`${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

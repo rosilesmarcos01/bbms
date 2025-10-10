@@ -798,21 +798,13 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Generate new access token
-    const accessToken = jwt.sign(
-      { 
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        accessLevel: user.accessLevel
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-    );
+    // Generate new access token using jwtService for consistency
+    const tokens = jwtService.refreshAccessToken(refreshToken, user);
 
     res.json({
       message: 'Token refreshed successfully',
-      accessToken
+      accessToken: tokens.accessToken,
+      expiresIn: tokens.expiresIn
     });
 
   } catch (error) {
@@ -877,24 +869,20 @@ router.get('/me', require('../middleware/authMiddleware').verifyToken, async (re
 
 /**
  * Generate JWT tokens
+ * This function now delegates to the centralized jwtService for consistency
  */
 function generateTokens(user) {
-  const payload = {
-    userId: user.id,
+  // Ensure user object has all required fields with defaults
+  const userWithDefaults = {
+    id: user.id,
     email: user.email,
-    role: user.role,
-    accessLevel: user.accessLevel
+    role: user.role || 'user',
+    accessLevel: user.accessLevel || 'standard',
+    name: user.name || user.email,
+    department: user.department || 'Unknown'
   };
-
-  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h'
-  });
-
-  const refreshToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
-  });
-
-  return { accessToken, refreshToken };
+  
+  return jwtService.generateTokens(userWithDefaults);
 }
 
 module.exports = router;

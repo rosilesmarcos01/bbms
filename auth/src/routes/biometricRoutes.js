@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const authIdService = require('../services/authIdService');
 const userService = require('../services/userService');
 const authMiddleware = require('../middleware/authMiddleware');
+const jwtService = require('../services/jwtService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -947,24 +948,16 @@ router.post('/login/complete/:operationId', async (req, res) => {
       });
     }
     
-    // Generate JWT token
-    const jwt = require('jsonwebtoken');
-    const token = jwt.sign(
-      { 
-        userId: user.id, 
-        email: user.email,
-        role: user.role || 'user'
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-    );
-    
-    // Generate refresh token
-    const refreshToken = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
-    );
+    // Generate JWT tokens using the centralized JWT service
+    // This ensures consistency with regular login and includes all required fields
+    const tokens = jwtService.generateTokens({
+      id: user.id,
+      email: user.email,
+      role: user.role || 'user',
+      accessLevel: user.accessLevel || 'standard',
+      name: user.name,
+      department: user.department
+    });
     
     // Update last login
     await userService.updateUser(user.id, {
@@ -982,13 +975,16 @@ router.post('/login/complete/:operationId', async (req, res) => {
     return res.json({
       success: true,
       status: 'verified',
-      token,
-      refreshToken,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+      tokenType: tokens.tokenType,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
         role: user.role || 'user',
+        accessLevel: user.accessLevel || 'standard',
         department: user.department,
         biometricEnabled: true
       }

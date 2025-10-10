@@ -1,8 +1,16 @@
 const axios = require('axios');
+const https = require('https');
 const logger = require('../utils/logger');
 
 // Auth service configuration
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+// Create axios instance that accepts self-signed certificates for auth service
+const authServiceAxios = axios.create({
+  httpsAgent: new https.Agent({
+    rejectUnauthorized: false // Accept self-signed certificates in development
+  })
+});
 
 /**
  * Middleware to verify JWT tokens with the auth service
@@ -20,8 +28,8 @@ const verifyToken = async (req, res, next) => {
 
     const token = authHeader.substring(7);
 
-    // Verify token with auth service
-    const response = await axios.get(`${AUTH_SERVICE_URL}/api/auth/me`, {
+    // Verify token with auth service using custom axios instance
+    const response = await authServiceAxios.get(`${AUTH_SERVICE_URL}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -59,7 +67,7 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       
-      const response = await axios.get(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      const response = await authServiceAxios.get(`${AUTH_SERVICE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -150,7 +158,7 @@ const requireAccessLevel = (levels) => {
  */
 const logBuildingAccess = async (userId, zoneId, accessType, method = 'api', deviceId = null) => {
   try {
-    await axios.post(`${AUTH_SERVICE_URL}/api/building-access/log`, {
+    await authServiceAxios.post(`${AUTH_SERVICE_URL}/api/building-access/log`, {
       zoneId,
       accessType,
       method,
@@ -170,7 +178,7 @@ const logBuildingAccess = async (userId, zoneId, accessType, method = 'api', dev
  */
 const checkZoneAccess = async (userId, zoneId, token) => {
   try {
-    const response = await axios.get(`${AUTH_SERVICE_URL}/api/building-access/permissions/${zoneId}`, {
+    const response = await authServiceAxios.get(`${AUTH_SERVICE_URL}/api/building-access/permissions/${zoneId}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
