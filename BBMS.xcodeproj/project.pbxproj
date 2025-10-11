@@ -40,6 +40,7 @@
 		A55BD9F02E96E95B00033499 /* BiometricEnrollmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */; };
 		A55BD9F12E96E95B00033499 /* BiometricComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */; };
 		A55BD9F42E973F1B00033499 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9F22E973F1B00033499 /* AppConfig.swift */; };
+		A55BD9F62E99C15C00033499 /* LoadingTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BD9F52E99C15C00033499 /* LoadingTransitionView.swift */; };
 		A59BFFE32E8B77E70030803A /* ModernSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE22E8B77E70030803A /* ModernSplashView.swift */; };
 		A59BFFE42E8B77E70030803A /* ModernLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE12E8B77E70030803A /* ModernLogoView.swift */; };
 		A59BFFE92E8B86520030803A /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59BFFE82E8B86520030803A /* AlertService.swift */; };
@@ -90,6 +91,7 @@
 		A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricComponents.swift; sourceTree = "<group>"; };
 		A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricEnrollmentView.swift; sourceTree = "<group>"; };
 		A55BD9F22E973F1B00033499 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		A55BD9F52E99C15C00033499 /* LoadingTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingTransitionView.swift; sourceTree = "<group>"; };
 		A59BFFE12E8B77E70030803A /* ModernLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernLogoView.swift; sourceTree = "<group>"; };
 		A59BFFE22E8B77E70030803A /* ModernSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernSplashView.swift; sourceTree = "<group>"; };
 		A59BFFE82E8B86520030803A /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
@@ -159,6 +161,7 @@
 		3A001E0C2C9F2EE800000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A55BD9F52E99C15C00033499 /* LoadingTransitionView.swift */,
 				A55BD9EE2E96E95B00033499 /* BiometricComponents.swift */,
 				A55BD9EF2E96E95B00033499 /* BiometricEnrollmentView.swift */,
 				A55BD9E42E959AC300033499 /* AccessHistoryView.swift */,
@@ -326,6 +329,7 @@
 				A51AA67D2E8DBF5A00F8669E /* RubidexDocumentsView.swift in Sources */,
 				3A001E152C9F2F2500000001 /* DeviceMonitoringView.swift in Sources */,
 				A51AA68F2E91CF0A00F8669E /* AlertsSheetView.swift in Sources */,
+				A55BD9F62E99C15C00033499 /* LoadingTransitionView.swift in Sources */,
 				3A001E022C9F2E5600000001 /* ContentView.swift in Sources */,
 				3A001E112C9F2F0600000001 /* Zone.swift in Sources */,
 				A59BFFE32E8B77E70030803A /* ModernSplashView.swift in Sources */,

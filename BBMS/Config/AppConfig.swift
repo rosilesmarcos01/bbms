@@ -4,7 +4,7 @@ import Foundation
 struct AppConfig {
     // MARK: - Network Configuration
     // This IP is automatically updated by running ./update-ip.sh in project root
-    static let hostIP = "10.10.62.45"
+    static let hostIP = "192.168.100.17"
     
     // MARK: - Service URLs
     static let authBaseURL = "https://\(hostIP):3001/api"

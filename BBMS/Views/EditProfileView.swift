@@ -24,11 +24,20 @@ struct EditProfileView: View {
                                     .frame(width: 80, height: 80)
                                 
                                 if let imageName = userService.currentUser.profileImageName {
-                                    Image(imageName)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(Circle())
+                                    // Load image from Documents directory
+                                    if let imageData = loadImageFromDocuments(imageName: imageName),
+                                       let uiImage = UIImage(data: imageData) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(Circle())
+                                    } else {
+                                        // Fallback to default icon if file not found
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 30))
+                                            .foregroundColor(Color("BBMSGold"))
+                                    }
                                 } else {
                                     Image(systemName: "person.fill")
                                         .font(.system(size: 30))
@@ -159,6 +168,23 @@ struct EditProfileView: View {
     }
     
     // MARK: - Helper Methods
+    private func loadImageFromDocuments(imageName: String) -> Data? {
+        let fileManager = FileManager.default
+        guard let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        
+        let fileURL = documentsDirectory.appendingPathComponent(imageName)
+        
+        do {
+            let imageData = try Data(contentsOf: fileURL)
+            return imageData
+        } catch {
+            print("❌ Error loading profile image: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
     private func loadCurrentUserData() {
         editedName = userService.currentUser.name
         editedEmail = userService.currentUser.email

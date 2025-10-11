@@ -232,7 +232,7 @@ struct BiometricSettingsView: View {
     private var biometricName: String {
         switch biometricType {
         case .faceID:
-            return "Face ID"
+            return "Auth ID"
         case .touchID:
             return "Touch ID"
         default:

@@ -57,6 +57,24 @@ struct AccountView: View {
         }
     }
     
+    // MARK: - Helper Methods
+    private func loadImageFromDocuments(imageName: String) -> Data? {
+        let fileManager = FileManager.default
+        guard let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        
+        let fileURL = documentsDirectory.appendingPathComponent(imageName)
+        
+        do {
+            let imageData = try Data(contentsOf: fileURL)
+            return imageData
+        } catch {
+            print("❌ Error loading profile image: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
     // MARK: - Profile Header
     private var profileHeader: some View {
         VStack(spacing: 16) {
@@ -70,11 +88,26 @@ struct AccountView: View {
                         .frame(width: 120, height: 120)
                     
                     if let imageName = userService.currentUser.profileImageName {
-                        Image(imageName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
+                        // Load image from Documents directory
+                        if let imageData = loadImageFromDocuments(imageName: imageName),
+                           let uiImage = UIImage(data: imageData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                        } else {
+                            // Fallback to default icon if file not found
+                            VStack {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundColor(Color("BBMSGold"))
+                                
+                                Text("")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     } else {
                         VStack {
                             Image(systemName: "person.fill")
@@ -183,7 +216,7 @@ struct AccountView: View {
             VStack(spacing: 12) {
                 MenuItemRow(
                     title: "Biometric Settings",
-                    subtitle: "Manage Face ID and Touch ID",
+                    subtitle: "Manage AuthID data",
                     icon: "faceid",
                     color: Color("BBMSBlue")
                 ) {

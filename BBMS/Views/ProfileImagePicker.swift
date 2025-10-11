@@ -28,11 +28,20 @@ struct ProfileImagePicker: View {
                                 .frame(width: 150, height: 150)
                                 .clipShape(Circle())
                         } else if let imageName = userService.currentUser.profileImageName {
-                            Image(imageName)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 150, height: 150)
-                                .clipShape(Circle())
+                            // Load image from Documents directory
+                            if let imageData = loadImageFromDocuments(imageName: imageName),
+                               let uiImage = UIImage(data: imageData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 150, height: 150)
+                                    .clipShape(Circle())
+                            } else {
+                                // Fallback to default icon if file not found
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundColor(Color("BBMSGold"))
+                            }
                         } else {
                             Image(systemName: "person.fill")
                                 .font(.system(size: 60))
@@ -113,18 +122,67 @@ struct ProfileImagePicker: View {
         }
     }
     
-    private func savePhoto() {
-        // In a real app, you would save the image data and update the user profile
-        // For now, we'll just simulate saving
-        if selectedImageData != nil {
-            // Generate a unique filename for the image
-            let imageName = "profile_\(UUID().uuidString)"
-            userService.updateProfileImage(imageName)
+    private func loadImageFromDocuments(imageName: String) -> Data? {
+        let fileManager = FileManager.default
+        guard let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
         }
-        isPresented = false
+        
+        let fileURL = documentsDirectory.appendingPathComponent(imageName)
+        
+        do {
+            let imageData = try Data(contentsOf: fileURL)
+            return imageData
+        } catch {
+            print("❌ Error loading profile image: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    private func savePhoto() {
+        guard let imageData = selectedImageData else {
+            isPresented = false
+            return
+        }
+        
+        // Save image data to Documents directory
+        let fileManager = FileManager.default
+        guard let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            print("❌ Failed to get documents directory")
+            isPresented = false
+            return
+        }
+        
+        // Generate a unique filename
+        let imageName = "profile_\(UUID().uuidString).jpg"
+        let fileURL = documentsDirectory.appendingPathComponent(imageName)
+        
+        do {
+            // Save the image data to disk
+            try imageData.write(to: fileURL)
+            print("✅ Profile image saved to: \(fileURL.path)")
+            
+            // Update the user service with the filename
+            userService.updateProfileImage(imageName)
+            
+            isPresented = false
+        } catch {
+            print("❌ Error saving profile image: \(error.localizedDescription)")
+            isPresented = false
+        }
     }
     
     private func removePhoto() {
+        // Remove the file from disk if it exists
+        if let imageName = userService.currentUser.profileImageName {
+            let fileManager = FileManager.default
+            if let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let fileURL = documentsDirectory.appendingPathComponent(imageName)
+                try? fileManager.removeItem(at: fileURL)
+                print("🗑️ Removed profile image: \(imageName)")
+            }
+        }
+        
         selectedImageData = nil
         userService.updateProfileImage(nil)
     }

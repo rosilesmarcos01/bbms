@@ -3,19 +3,44 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var globalMonitor: GlobalTemperatureMonitor
     @StateObject private var authService = AuthService.shared
+    @State private var showLoadingTransition = false
+    @State private var showAuthenticatedView = false
     
     var body: some View {
         Group {
-            if authService.isAuthenticated {
+            if showLoadingTransition {
+                LoadingTransitionView()
+                    .transition(.opacity)
+            } else if showAuthenticatedView {
                 AuthenticatedView()
                     .environmentObject(authService)
+                    .transition(.opacity)
             } else {
                 LoginView()
                     .environmentObject(authService)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: showLoadingTransition)
+        .animation(.easeInOut(duration: 0.3), value: showAuthenticatedView)
         .onAppear {
             authService.checkAuthenticationStatus()
+        }
+        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated {
+                // Show loading transition
+                showLoadingTransition = true
+                
+                // After 1.5 seconds, show the authenticated view
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    showLoadingTransition = false
+                    showAuthenticatedView = true
+                }
+            } else {
+                // User logged out - reset states
+                showLoadingTransition = false
+                showAuthenticatedView = false
+            }
         }
     }
 }

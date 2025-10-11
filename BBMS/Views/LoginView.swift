@@ -71,6 +71,10 @@ struct LoginView: View {
                     endPoint: .bottom
                 )
             )
+            .onTapGesture {
+                // Dismiss keyboard when tapping outside text fields
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
         }
         .onAppear {
             setupBiometricType()
@@ -262,7 +266,7 @@ struct LoginView: View {
     private var biometricName: String {
         switch biometricType {
         case .faceID:
-            return "Face ID"
+            return "Auth ID"
         case .touchID:
             return "Touch ID"
         default:
